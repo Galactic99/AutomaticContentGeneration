@@ -1,0 +1,11 @@
+fastapi[all]
+uvicorn[standard]
+google-generativeai
+pydantic-settings
+python-multipart
+python-dotenv
+pathlib
+langchain
+langchain-google-genai
+pypdf
+docx2txt
