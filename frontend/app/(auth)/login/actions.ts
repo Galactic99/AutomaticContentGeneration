@@ -12,7 +12,7 @@ export async function signInWithGoogle() {
     provider: "google",
     options: {
       // This tells Google where to send the user after login
-      redirectTo: `${origin}/callback`,
+      redirectTo: `${origin}/callback?next=/dashboard`,
     },
   });
 

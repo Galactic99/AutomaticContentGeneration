@@ -1,9 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, use } from "react";
 import Link from "next/link";
 
-export default function ReviewPage({ params }: { params: { id: string } }) {
+export default function ReviewPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
+  const campaignId = id || 'CAM-001';
+
   const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
   const [socialPlatform, setSocialPlatform] = useState<"x" | "linkedin" | "instagram">("x");
 

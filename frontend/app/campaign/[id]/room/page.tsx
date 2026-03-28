@@ -1,7 +1,10 @@
 import React from "react";
 import Link from "next/link";
 
-export default function AgentRoomPage({ params }: { params: { id: string } }) {
+export default async function AgentRoomPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const campaignId = id || 'CAM-001';
+
   return (
     <div className="flex flex-col h-full bg-zinc-50 font-outfit text-zinc-900">
       {/* --- HEADER --- */}
@@ -11,11 +14,11 @@ export default function AgentRoomPage({ params }: { params: { id: string } }) {
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
           </div>
           <h1 className="font-playfair text-xl font-bold italic">Agent Assembly Line</h1>
-          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest bg-zinc-100 px-2 py-1 rounded-md">ID: {params.id || 'CAM-001'}</span>
+          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest bg-zinc-100 px-2 py-1 rounded-md">ID: {campaignId}</span>
         </div>
         
         <Link 
-          href={`/campaign/${params.id || 'CAM-001'}/review`}
+          href={`/campaign/${campaignId}/review`}
           className="px-6 py-2 rounded-full border border-zinc-200 bg-white text-[12px] font-bold text-zinc-600 transition-all hover:border-zinc-300 hover:shadow-sm"
         >
           View Drafts &rarr;
@@ -80,7 +83,7 @@ export default function AgentRoomPage({ params }: { params: { id: string } }) {
             </div>
 
             {/* Log 1: Research */}
-            <div className="flex gap-6 max-w-2xl">
+            {/* <div className="flex gap-6 max-w-2xl">
                <div className="h-10 w-10 shrink-0 rounded-2xl bg-zinc-50 flex items-center justify-center text-xl shadow-inner">🧠</div>
                <div className="space-y-2">
                   <div className="flex items-center gap-2">
@@ -91,10 +94,10 @@ export default function AgentRoomPage({ params }: { params: { id: string } }) {
                     Raw source document parsed. I've extracted **3 core value propositions** and mapped out the technical architecture of the new API. Creating the Fact-Sheet now.
                   </div>
                </div>
-            </div>
+            </div> */}
 
             {/* Log 2: Copywriter */}
-            <div className="flex gap-6 max-w-2xl">
+            {/* <div className="flex gap-6 max-w-2xl">
                <div className="h-10 w-10 shrink-0 rounded-2xl bg-zinc-50 flex items-center justify-center text-xl shadow-inner">🎨</div>
                <div className="space-y-2">
                   <div className="flex items-center gap-2">
@@ -105,6 +108,13 @@ export default function AgentRoomPage({ params }: { params: { id: string } }) {
                     Fact-Sheet received. Initiating the "Professional/Trustworthy" tone module for the blog draft and "Engagement-Optimized" mode for the social thread. Standby.
                   </div>
                </div>
+            </div> */}
+
+            <div className="flex flex-col items-center justify-center h-full space-y-4 opacity-40">
+               <div className="h-12 w-12 rounded-[1.5rem] bg-zinc-100 flex items-center justify-center animate-pulse">
+                  <svg className="w-5 h-5 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
+               </div>
+               <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-[0.3em]">Listening for specialized agents...</p>
             </div>
 
             {/* Typing Indicator */}

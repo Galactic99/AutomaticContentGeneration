@@ -4,8 +4,8 @@ import { NextResponse } from "next/server";
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  // If "next" is in the URL, go there, otherwise go to home (/)
-  const next = searchParams.get("next") ?? "/";
+  // If "next" is in the URL, go there, otherwise go to dashboard (/dashboard)
+  const next = searchParams.get("next") ?? "/dashboard";
 
   if (code) {
     const supabase = await createClient();

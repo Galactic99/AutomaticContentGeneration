@@ -47,7 +47,7 @@ export default async function DashboardLayout({
             
             <div className="space-y-1">
               {/* --- MOCK PREVIOUS SESSIONS --- */}
-              {[
+              {/* {[
                 { id: "123", name: "Q3 Tech Release", date: "2h ago" },
                 { id: "124", name: "Winter Pulse Doc", date: "Yesterday" },
                 { id: "125", name: "Security Audit (v2)", date: "Jan 12" },
@@ -64,7 +64,11 @@ export default async function DashboardLayout({
                     <svg className="w-4 h-4 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/></svg>
                   </div>
                 </Link>
-              ))}
+              ))} */}
+              <div className="px-4 py-8 text-center space-y-3 opacity-40">
+                <div className="h-10 w-10 bg-zinc-100 rounded-2xl mx-auto flex items-center justify-center text-zinc-400">∅</div>
+                <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest leading-loose">No recent activity <br/> detected</p>
+              </div>
             </div>
           </div>
         </nav>
@@ -102,26 +106,27 @@ export default async function DashboardLayout({
                 </div>
               </button>
               
-              {/* DROPDOWN (Simplified for Layout) */}
-              <div className="absolute right-0 top-full mt-4 w-56 p-2 rounded-3xl bg-white border border-zinc-100 shadow-2xl opacity-0 translate-y-2 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto transition-all duration-300 z-50">
-                <div className="px-4 py-3 border-b border-zinc-50 mb-1">
-                  <p className="text-xs font-bold truncate">{user.email}</p>
-                  <p className="text-[10px] text-zinc-400 font-medium">Free Organization</p>
+              {/* DROPDOWN BRIDGE (To prevent closing when moving mouse) */}
+              <div className="absolute right-0 top-0 pt-12 mt-0 w-56 opacity-0 translate-y-2 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto transition-all duration-300 z-50">
+                <div className="p-2 rounded-3xl bg-white border border-zinc-100 shadow-[0_20px_50px_rgba(0,0,0,0.12)]">
+                  <div className="px-4 py-3 border-b border-zinc-50 mb-1">
+                    <p className="text-xs font-bold truncate text-zinc-900">{user.email}</p>
+                  </div>
+                  <Link href="/settings" className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-[13px] font-bold text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-900">
+                    Account Settings
+                  </Link>
+                  <form action="/signout" method="post">
+                    <button className="w-full text-left px-4 py-2.5 rounded-2xl text-[13px] font-bold text-red-500 transition-colors hover:bg-red-50">
+                      Sign Out
+                    </button>
+                  </form>
                 </div>
-                <Link href="/settings" className="flex items-center gap-2 px-4 py-2 rounded-2xl text-[13px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50">
-                  Settings
-                </Link>
-                <form action="/auth/signout" method="post">
-                  <button className="w-full text-left px-4 py-2 rounded-2xl text-[13px] font-medium text-red-500 transition-colors hover:bg-red-50">
-                    Sign Out
-                  </button>
-                </form>
               </div>
             </div>
           </div>
         </header>
 
-        <section className="flex-1 overflow-y-auto bg-zinc-50">
+        <section className="flex-1 bg-zinc-50">
           {children}
         </section>
       </main>
