@@ -1,5 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from app.core.parser import ContentParser
+from app.services.storage import CampaignStorage
 from pydantic import BaseModel
 from typing import Optional
 
@@ -33,7 +34,10 @@ async def upload_document(
     if not parsed_text or len(parsed_text.strip()) == 0:
         raise HTTPException(status_code=422, detail="Extracted document content is empty.")
 
-    # 3. Return the preview for confirmation (to be hidden in later phases)
+    # 3. Store for the SSE Streamer to consume
+    CampaignStorage.save_campaign(campaign_id, parsed_text)
+
+    # 4. Return the preview for confirmation (to be hidden in later phases)
     # We take the first 1000 characters for the preview
     preview = parsed_text[:1000] + ("..." if len(parsed_text) > 1000 else "")
 

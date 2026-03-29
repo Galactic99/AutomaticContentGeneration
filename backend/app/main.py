@@ -27,7 +27,9 @@ def create_app() -> FastAPI:
 
     # Routes: Registering Campaign & Agent Routers
     from app.api.upload import router as upload_router
+    from app.api.stream import router as stream_router
     app.include_router(upload_router, prefix="/api/v1")
+    app.include_router(stream_router, prefix="/api/v1")
 
     @app.get("/health", tags=["General"])
     async def health_check():

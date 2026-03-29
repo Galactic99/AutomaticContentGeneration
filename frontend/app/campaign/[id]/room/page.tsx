@@ -1,12 +1,27 @@
-import React from "react";
-import Link from "next/link";
+"use client";
 
-export default async function AgentRoomPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const campaignId = id || 'CAM-001';
+import React, { useEffect, useRef } from "react";
+import Link from "next/link";
+import { useCampaignStream } from "@/src/hooks/useCampaignStream";
+import { use } from "react";
+
+export default function AgentRoomPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
+  const { logs, isCompleted, error, activeAgentId } = useCampaignStream(id);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // 1. Auto-scroll to the bottom whenever a new log arrives
+  useEffect(() => {
+    if (scrollRef.current) {
+        scrollRef.current.scrollTo({
+            top: scrollRef.current.scrollHeight,
+            behavior: "smooth"
+        });
+    }
+  }, [logs]);
 
   return (
-    <div className="flex flex-col h-full bg-zinc-50 font-outfit text-zinc-900">
+    <div className="flex flex-col h-full bg-zinc-50 font-outfit text-zinc-900 overflow-hidden">
       {/* --- HEADER --- */}
       <div className="flex h-16 items-center justify-between px-8 bg-white border-b border-zinc-100 shadow-sm z-10">
         <div className="flex items-center gap-3">
@@ -14,14 +29,18 @@ export default async function AgentRoomPage({ params }: { params: Promise<{ id: 
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
           </div>
           <h1 className="font-playfair text-xl font-bold italic">Agent Assembly Line</h1>
-          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest bg-zinc-100 px-2 py-1 rounded-md">ID: {campaignId}</span>
+          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest bg-zinc-100 px-2 py-1 rounded-md">ID: {id || 'CAM-001'}</span>
         </div>
         
         <Link 
-          href={`/campaign/${campaignId}/review`}
-          className="px-6 py-2 rounded-full border border-zinc-200 bg-white text-[12px] font-bold text-zinc-600 transition-all hover:border-zinc-300 hover:shadow-sm"
+          href={`/campaign/${id}/review`}
+          className={`flex items-center gap-2 px-6 py-2 rounded-full border border-zinc-200 transition-all text-[12px] font-bold ${
+            isCompleted 
+                ? "bg-zinc-900 border-zinc-900 text-white shadow-xl shadow-zinc-200" 
+                : "bg-white text-zinc-400 pointer-events-none opacity-50"
+          }`}
         >
-          View Drafts &rarr;
+          {isCompleted ? "View Drafts →" : "Collaborating..."}
         </Link>
       </div>
 
@@ -31,38 +50,53 @@ export default async function AgentRoomPage({ params }: { params: Promise<{ id: 
           <h2 className="text-[11px] font-bold text-zinc-400 uppercase tracking-[0.2em] mb-2 px-1">Active Personas</h2>
           
           {[
-            { name: "Lead Research", role: "Analytical Brain", status: "Completed", icon: "🧠", active: false },
-            { name: "Creative Copy", role: "Content Engine", status: "Thinking...", icon: "🎨", active: true },
-            { name: "Editor-in-Chief", role: "QA Gatekeeper", status: "Idle", icon: "⚖️", active: false },
-          ].map((agent, i) => (
-            <div 
-              key={i} 
-              className={`relative p-6 rounded-[2.5rem] border bg-white shadow-sm transition-all duration-500 ${agent.active ? 'ring-4 ring-blue-50 border-blue-200 -translate-y-1' : 'border-zinc-100 opacity-60'}`}
-            >
-              {agent.active && (
-                <div className="absolute -top-3 -right-3 h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white shadow-lg animate-bounce">
-                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+            { id: "researcher", name: "Lead Research", role: "Analytical Brain", icon: "🧠" },
+            { id: "copywriter", name: "Creative Copy", role: "Content Engine", icon: "🎨" },
+            { id: "editor", name: "Editor-in-Chief", role: "QA Gatekeeper", icon: "⚖️" },
+          ].map((agent, i) => {
+            const isActive = activeAgentId === agent.id;
+            const isDone = logs.some(l => l.agent_id === agent.id && l.status === 'completed');
+            
+            return (
+              <div 
+                key={i} 
+                className={`relative p-6 rounded-[2.5rem] border bg-white shadow-sm transition-all duration-500 ${isActive ? 'ring-4 ring-blue-50 border-blue-200 -translate-y-1' : 'border-zinc-100 opacity-60 font-medium'}`}
+              >
+                {isActive && (
+                  <div className="absolute -top-3 -right-3 h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white shadow-lg animate-bounce">
+                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+                  </div>
+                )}
+                {isDone && !isActive && (
+                  <div className="absolute -top-3 -right-3 h-8 w-8 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-lg">
+                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+                  </div>
+                )}
+                
+                <div className="flex items-center gap-4 mb-3">
+                  <div className={`h-12 w-12 rounded-2xl flex items-center justify-center text-2xl shadow-inner transition-colors ${isActive ? 'bg-blue-50' : 'bg-zinc-50'}`}>
+                    {agent.icon}
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-zinc-900">{agent.name}</span>
+                    <span className="text-[10px] font-medium text-zinc-400 uppercase tracking-wider">{agent.role}</span>
+                  </div>
                 </div>
-              )}
-              <div className="flex items-center gap-4 mb-3">
-                <div className="h-12 w-12 rounded-2xl bg-zinc-50 flex items-center justify-center text-2xl shadow-inner uppercase tracking-tighter">
-                  {agent.icon}
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-sm font-bold text-zinc-900">{agent.name}</span>
-                  <span className="text-[10px] font-medium text-zinc-400 uppercase tracking-wider">{agent.role}</span>
+                <div className="flex items-center gap-2">
+                   <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-blue-500 animate-pulse' : isDone ? 'bg-emerald-500' : 'bg-zinc-300'}`} />
+                   <span className={`text-[11px] font-bold ${isActive ? 'text-blue-500' : isDone ? 'text-emerald-500' : 'text-zinc-400'}`}>
+                       {isActive ? "Thinking..." : isDone ? "Completed" : "Idle"}
+                   </span>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                 <span className={`h-1.5 w-1.5 rounded-full ${agent.active ? 'bg-blue-500 animate-pulse' : 'bg-zinc-300'}`} />
-                 <span className={`text-[11px] font-bold ${agent.active ? 'text-blue-500' : 'text-zinc-400'}`}>{agent.status}</span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
 
-          <div className="mt-auto p-6 rounded-[2.5rem] bg-zinc-950 text-white shadow-2xl">
-              <h4 className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Campaign Goal</h4>
-              <p className="font-playfair text-sm italic leading-relaxed text-zinc-300">"Transforming Q3 technical specs into human-first marketing copy."</p>
+          <div className={`mt-auto p-6 rounded-[2.5rem] shadow-2xl transition-all duration-500 ${error ? 'bg-red-950 ring-4 ring-red-500/20' : 'bg-zinc-950'}`}>
+              <h4 className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Production Status</h4>
+              <p className="font-playfair text-sm italic leading-relaxed text-zinc-300">
+                {error ? "System halted due to external quota failure. Retrying with alternative model..." : `Campaign Round: ${logs.reduce((max, l) => Math.max(max, (l as any).loop_count || 0), 0) + 1}`}
+              </p>
           </div>
         </div>
 
@@ -76,65 +110,68 @@ export default async function AgentRoomPage({ params }: { params: Promise<{ id: 
             </div>
           </div>
 
-          <div className="flex-1 p-10 space-y-10 overflow-y-auto custom-scrollbar">
+          <div ref={scrollRef} className="flex-1 p-10 space-y-10 overflow-y-auto custom-scrollbar scroll-smooth">
             {/* System Start */}
             <div className="flex flex-col items-center">
               <span className="text-[10px] font-bold text-zinc-300 uppercase tracking-[0.3em] bg-zinc-50 px-4 py-2 rounded-full border border-zinc-100">Assembly Line Started</span>
             </div>
 
-            {/* Log 1: Research */}
-            {/* <div className="flex gap-6 max-w-2xl">
-               <div className="h-10 w-10 shrink-0 rounded-2xl bg-zinc-50 flex items-center justify-center text-xl shadow-inner">🧠</div>
-               <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[13px] font-bold text-zinc-900">Lead Researcher</span>
-                    <span className="text-[10px] font-medium text-zinc-300 tracking-tighter uppercase">12:04 PM</span>
-                  </div>
-                  <div className="p-6 rounded-3xl rounded-tl-sm bg-zinc-50 border border-zinc-100 text-sm leading-relaxed text-zinc-600 shadow-sm transition-all hover:scale-[1.01]">
-                    Raw source document parsed. I've extracted **3 core value propositions** and mapped out the technical architecture of the new API. Creating the Fact-Sheet now.
-                  </div>
-               </div>
-            </div> */}
+            {/* Error Message if any */}
+            {error && (
+                 <div className="p-6 rounded-3xl bg-red-50 border border-red-100 text-red-600 text-sm font-medium animate-in zoom-in-95 duration-300">
+                    ⚠️ {error}
+                 </div>
+            )}
 
-            {/* Log 2: Copywriter */}
-            {/* <div className="flex gap-6 max-w-2xl">
-               <div className="h-10 w-10 shrink-0 rounded-2xl bg-zinc-50 flex items-center justify-center text-xl shadow-inner">🎨</div>
-               <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[13px] font-bold text-zinc-900">Creative Copy</span>
-                    <span className="text-[10px] font-medium text-zinc-300 tracking-tighter uppercase">Just now</span>
-                  </div>
-                  <div className="p-6 rounded-3xl rounded-tl-sm bg-blue-500 text-white text-sm leading-relaxed shadow-xl shadow-blue-200 transition-all hover:scale-[1.01]">
-                    Fact-Sheet received. Initiating the "Professional/Trustworthy" tone module for the blog draft and "Engagement-Optimized" mode for the social thread. Standby.
-                  </div>
-               </div>
-            </div> */}
+            {/* Dynamic Logs */}
+            {logs.map((log, i) => (
+                <div key={i} className={`flex gap-6 max-w-2xl animate-in slide-in-from-bottom-5 fade-in duration-500`}>
+                   <div className="h-10 w-10 shrink-0 rounded-2xl bg-zinc-50 flex items-center justify-center text-xl shadow-inner">
+                      {log.agent_id === 'researcher' ? '🧠' : log.agent_id === 'copywriter' ? '🎨' : '⚖️'}
+                   </div>
+                   <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] font-bold text-zinc-900">{log.agent_name}</span>
+                        <span className="text-[10px] font-medium text-zinc-300 tracking-tighter uppercase whitespace-nowrap">
+                            {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <div className={`p-6 rounded-3xl rounded-tl-sm text-sm leading-relaxed border shadow-sm transition-all hover:scale-[1.01] ${
+                          log.agent_id === 'researcher' ? 'bg-zinc-50 border-zinc-100 text-zinc-600' : 
+                          log.agent_id === 'copywriter' ? 'bg-blue-500 text-white border-blue-400' : 
+                          'bg-emerald-50 border-emerald-100 text-emerald-700'
+                      }`}>
+                        {log.message}
+                      </div>
+                   </div>
+                </div>
+            ))}
 
-            <div className="flex flex-col items-center justify-center h-full space-y-4 opacity-40">
-               <div className="h-12 w-12 rounded-[1.5rem] bg-zinc-100 flex items-center justify-center animate-pulse">
-                  <svg className="w-5 h-5 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
-               </div>
-               <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-[0.3em]">Listening for specialized agents...</p>
-            </div>
-
-            {/* Typing Indicator */}
-            <div className="flex gap-6">
-               <div className="h-10 w-10 shrink-0 rounded-2xl bg-zinc-50 flex items-center justify-center text-xl shadow-inner grayscale opacity-50 relative overflow-hidden">
-                  🎨
-                  <div className="absolute inset-0 bg-white/20 animate-pulse" />
-               </div>
-               <div className="flex items-center gap-1.5 p-6 rounded-3xl bg-zinc-50 border border-zinc-100">
-                  <span className="h-1.5 w-1.5 bg-zinc-300 rounded-full animate-bounce"></span>
-                  <span className="h-1.5 w-1.5 bg-zinc-300 rounded-full animate-bounce delay-150"></span>
-                  <span className="h-1.5 w-1.5 bg-zinc-300 rounded-full animate-bounce delay-300"></span>
-               </div>
-            </div>
+            {!isCompleted && !error && (
+                <div className="flex flex-col items-center justify-center space-y-4 opacity-40 py-10">
+                   <div className="h-12 w-12 rounded-[1.5rem] bg-zinc-100 flex items-center justify-center animate-pulse">
+                      <svg className="w-5 h-5 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
+                   </div>
+                   <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-[0.3em] font-medium">Listening for specialized agents...</p>
+                </div>
+            )}
+            
+            {/* Final Completion State */}
+            {isCompleted && (
+                 <div className="flex flex-col items-center pt-4 scale-up-fade">
+                    <div className="px-6 py-2 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase tracking-widest border border-emerald-200">
+                      Phase Complete &bull; Fact-Sheet Finalized
+                    </div>
+                </div>
+            )}
           </div>
 
           <div className="p-8 border-t border-zinc-50 bg-white/80 backdrop-blur-md">
              <div className="flex items-center justify-between gap-4">
-                <div className="flex-1 px-6 py-4 rounded-3xl bg-zinc-50 border border-zinc-100 text-[13px] font-medium text-zinc-400 italic">
-                   Agents are collaborating...
+                 <div className={`flex-1 px-6 py-4 rounded-3xl border text-[13px] font-medium transition-all ${
+                    isCompleted ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : error ? 'bg-red-50 border-red-100 text-red-600' : 'bg-zinc-50 border-zinc-100 text-zinc-400 italic'
+                }`}>
+                   {isCompleted ? "All agents finished." : error ? "Assembly line halted." : "Agents are collaborating in silence..."}
                 </div>
                 <button className="h-14 w-14 rounded-3xl bg-zinc-900 text-white flex items-center justify-center shadow-xl shadow-zinc-200 transition-all hover:-translate-y-1">
                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>

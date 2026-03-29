@@ -10,6 +10,27 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
   const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
   const [socialPlatform, setSocialPlatform] = useState<"x" | "linkedin" | "instagram">("x");
 
+  const [isLoading, setIsLoading] = useState(true);
+  const [results, setResults] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!campaignId) return;
+    fetch(`http://localhost:8000/api/v1/campaign/${campaignId}/results`)
+      .then(res => {
+        if (!res.ok) throw new Error("Failed to load campaign results");
+        return res.json();
+      })
+      .then(data => {
+        setResults(data);
+        setIsLoading(false);
+      })
+      .catch(err => {
+        setError(err.message);
+        setIsLoading(false);
+      });
+  }, [campaignId]);
+
   return (
     <div className="min-h-full bg-zinc-50 font-outfit p-4 sm:p-10 text-zinc-900 overflow-x-hidden selection:bg-blue-100 transition-all duration-300">
       <div className="max-w-[1700px] mx-auto space-y-12">
@@ -80,10 +101,9 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                  </div>
                  <div className={`flex-1 overflow-y-auto no-scrollbar ${viewMode === 'mobile' ? 'p-6' : 'p-10'}`}>
                     <div className="space-y-6">
-                       <h2 className={`font-playfair font-bold text-zinc-900 leading-tight ${viewMode === 'mobile' ? 'text-2xl' : 'text-3xl'}`}>The Autonomous Content Factory</h2>
-                       <div className="space-y-4 text-zinc-500 leading-relaxed font-outfit text-sm">
-                          <p>Traditional content production is broken. Repurposing a single source of truth manually is no longer viable in the fast-paced economy.</p>
-                          <p>By implementing a centralized assembly line, we've replaced the manual bottleneck with simplified AI orchestration.</p>
+                       <h2 className={`font-playfair font-bold text-zinc-900 leading-tight ${viewMode === 'mobile' ? 'text-2xl' : 'text-3xl'}`}>Campaign Blog Draft</h2>
+                       <div className="space-y-4 text-zinc-500 leading-relaxed font-outfit text-sm whitespace-pre-wrap">
+                          {isLoading ? "Loading your AI draft..." : error ? error : (results?.drafts?.blog || "No blog draft generated.")}
                        </div>
                     </div>
                  </div>
@@ -125,7 +145,9 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                     <div className={`flex-1 overflow-y-auto no-scrollbar bg-white shadow-sm ring-1 ring-zinc-200/50 ${viewMode === 'mobile' ? 'm-0 p-4' : 'm-2 p-8 rounded-2xl'}`}>
                        <div className="mb-8 space-y-4">
                           <header className="flex items-center justify-between">
-                             <h4 className="text-xl font-medium text-zinc-900 leading-tight">Redefining Digital Assembly</h4>
+                             <h4 className="text-xl font-medium text-zinc-900 leading-tight">
+                                {isLoading ? "Drafting subject..." : (results?.drafts?.email?.subject || "Redefining Digital Assembly")}
+                             </h4>
                              <div className="hidden sm:flex gap-1">
                                 <span className="px-2 py-0.5 rounded bg-zinc-100 text-[10px] font-medium text-zinc-500">Inbox</span>
                              </div>
@@ -192,7 +214,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                              <div className="h-10 w-10 rounded-full bg-zinc-900 flex-shrink-0" />
                              <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-1.5 mb-0.5"><span className="text-[14px] font-bold truncate">ContentFactory</span><span className="text-[12px] text-zinc-500">@CFactory &bull; 2h</span></div>
-                                <p className="text-[14px] leading-normal text-zinc-900 font-sans">The era of manual repurposing is over. Fast, orchestrated, fact-checked campaigns at your fingertips. ⚡️</p>
+                                <p className="text-[14px] leading-normal text-zinc-900 font-sans whitespace-pre-wrap">{isLoading ? "Loading..." : results?.drafts?.linkedin_thread || "No draft available."}</p>
                              </div>
                           </div>
                        </div>
@@ -203,7 +225,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                                 <div className="h-10 w-10 rounded bg-[#0077b5] text-white flex items-center justify-center font-bold">CF</div>
                                 <div><div className="text-[13px] font-bold">ContentFactory AI</div><div className="text-[11px] text-zinc-500">2h &bull; Public</div></div>
                              </div>
-                             <p className="text-[13px] text-zinc-900 font-outfit leading-snug">Consistency is king. Our workflow ensures 100% accuracy across every marketing channel. 🚀</p>
+                             <p className="text-[13px] text-zinc-900 font-outfit leading-snug whitespace-pre-wrap">{isLoading ? "Loading..." : results?.drafts?.linkedin_thread || "No draft available."}</p>
                              <div className="aspect-video bg-zinc-800 flex items-center justify-center"><h4 className="font-playfair text-lg text-white italic">The Assembly Line</h4></div>
                              <div className="flex items-center gap-6 pt-3 text-zinc-500 border-t border-zinc-100 font-bold text-[11px]"><span>Like</span><span>Comment</span><span>Repost</span></div>
                           </div>
@@ -212,7 +234,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                        <div className="h-full bg-white animate-in fade-in duration-500">
                           <div className="p-3 flex items-center gap-2"><div className="h-7 w-7 rounded-full bg-gradient-to-tr from-orange-400 to-purple-600 p-[1px]"><div className="h-full w-full rounded-full bg-zinc-200" /></div><span className="text-[12px] font-bold">content.factory</span></div>
                           <div className="aspect-square bg-zinc-900 flex flex-col items-center justify-center relative"><div className="absolute inset-0 bg-gradient-to-br from-[#833ab4]/10 to-[#fcb045]/10" /><h4 className="font-playfair text-xl text-white italic">Pure Content.</h4></div>
-                          <div className="p-3 text-[12px] space-y-1"><p><span className="font-bold">content.factory</span> The marketing kit that runs itself. ✍️</p></div>
+                          <div className="p-3 text-[12px] space-y-1"><p><span className="font-bold">content.factory</span> <span className="whitespace-pre-wrap">{isLoading ? "Loading..." : results?.drafts?.linkedin_thread || "No draft available."}</span></p></div>
                        </div>
                     )}
                  </div>

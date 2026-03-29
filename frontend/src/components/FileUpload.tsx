@@ -37,24 +37,40 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     setIsUploading(true);
     onUploadStart?.();
 
-    // Mocking the progress for better UX (as specified in PRD for "WOW" factor)
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += Math.random() * 30;
-      if (progress >= 95) {
-        clearInterval(interval);
-        setUploadProgress(100);
-        
-        // Final transition
-        setTimeout(() => {
-          const mockId = `CAM-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
-          onUploadComplete?.(mockId);
-          router.push(`/campaign/${mockId}/room`);
-        }, 800);
-      } else {
-        setUploadProgress(progress);
+    try {
+      const mockId = `CAM-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+      
+      // 3. Prepare FormData for FastAPI
+      const formData = new FormData();
+      formData.append("file", file);
+      
+      // 4. Submit to Backend
+      const response = await fetch(`http://localhost:8000/api/v1/campaign/upload?campaign_id=${mockId}`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.statusText}`);
       }
-    }, 400);
+
+      const data = await response.json();
+      console.log("Backend Response:", data);
+
+      // Simulation of a brief "Processing" delay for UX
+      setUploadProgress(100);
+      
+      setTimeout(() => {
+        onUploadComplete?.(mockId);
+        router.push(`/campaign/${mockId}/room`);
+      }, 800);
+
+    } catch (error) {
+      console.error("Upload Error:", error);
+      alert("Failed to connect to the Assembly Line. Please check if your backend is running.");
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
   };
 
   const onDragOver = (e: React.DragEvent) => {
