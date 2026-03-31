@@ -2,13 +2,20 @@
 
 import React, { useState, use } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 export default function ReviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const campaignId = id || 'CAM-001';
 
+  const router = useRouter();
   const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
   const [socialPlatform, setSocialPlatform] = useState<"x" | "linkedin" | "instagram">("x");
+  const [showSource, setShowSource] = useState(false);
+  const [showRefineModal, setShowRefineModal] = useState(false);
+  const [feedbackText, setFeedbackText] = useState("");
+  const [isRefining, setIsRefining] = useState(false);
+
 
   const [isLoading, setIsLoading] = useState(true);
   const [results, setResults] = useState<any>(null);
@@ -31,6 +38,48 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
       });
   }, [campaignId]);
 
+  const handleDownloadKit = () => {
+    if (!results?.drafts) return;
+    const kitText = `
+--- BLOG DRAFT ---
+${results.drafts.blog}
+
+--- SOCIAL MEDIA ---
+${results.drafts.linkedin_thread ? (Array.isArray(results.drafts.linkedin_thread) ? results.drafts.linkedin_thread.join('\n\n') : results.drafts.linkedin_thread) : ''}
+
+--- EMAIL ---
+Subject: ${results.drafts.email?.subject || ''}
+${results.drafts.email?.body || ''}
+`;
+    const blob = new Blob([kitText.trim()], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `campaign_kit_${campaignId}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleRefine = async () => {
+    if (!feedbackText.trim() || isRefining) return;
+    setIsRefining(true);
+    try {
+      const res = await fetch(`http://localhost:8000/api/v1/campaign/${campaignId}/refine`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ correction_notes: feedbackText })
+      });
+      if (!res.ok) throw new Error("Failed to queue refinement");
+      router.push(`/campaign/${campaignId}/room`);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to refine. Ensure the backend is running.");
+      setIsRefining(false);
+    }
+  };
+
   return (
     <div className="min-h-full bg-zinc-50 font-outfit p-4 sm:p-10 text-zinc-900 overflow-x-hidden selection:bg-blue-100 transition-all duration-300">
       <div className="max-w-[1700px] mx-auto space-y-12">
@@ -51,6 +100,13 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
              {/* --- VIEW MODE TOGGLE --- */}
              <div className="flex p-1 bg-white border border-zinc-200 rounded-2xl shadow-sm">
                 <button 
+                  onClick={() => setShowSource(!showSource)}
+                  className={`px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all ${showSource ? "bg-zinc-900 text-white" : "text-zinc-400 hover:text-zinc-900"}`}
+                >
+                  Source Context
+                </button>
+                <div className="w-px bg-zinc-200 mx-1" />
+                <button 
                   onClick={() => setViewMode("desktop")}
                   className={`px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all ${viewMode === "desktop" ? "bg-zinc-900 text-white" : "text-zinc-400 hover:text-zinc-900"}`}
                 >
@@ -64,6 +120,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                 </button>
              </div>
 
+
              <div className="h-8 w-px bg-zinc-200 hidden xl:block" />
 
              <div className="flex gap-4">
@@ -73,22 +130,68 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                 >
                   &larr; Exit
                 </Link>
-                <button className="px-8 py-3 rounded-2xl bg-blue-600 text-white text-[13px] font-bold transition-all hover:bg-blue-700 shadow-xl shadow-blue-100 active:scale-95">
-                  Publish All
+                <button 
+                  onClick={() => setShowRefineModal(true)}
+                  className="px-8 py-3 rounded-2xl bg-white border border-blue-200 text-blue-600 text-[13px] font-bold transition-all hover:border-blue-300 hover:bg-blue-50 shadow-sm active:scale-95 flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                  Refine Drafts
+                </button>
+                <button 
+                  onClick={handleDownloadKit}
+                  className="px-8 py-3 rounded-2xl bg-zinc-900 text-white text-[13px] font-bold transition-all hover:bg-zinc-800 shadow-xl shadow-zinc-200 active:scale-95 flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                  Download Kit
                 </button>
              </div>
           </div>
         </header>
 
         {/* --- MAIN DISPLAY AREA (RESPONSIVE GRID) --- */}
-        <div className={`grid grid-cols-1 gap-12 transition-all duration-700 ${viewMode === 'desktop' ? 'lg:grid-cols-3' : 'grid-cols-1 md:grid-cols-3'}`}>
+        <div className={`flex flex-col xl:flex-row gap-12 transition-all duration-700`}>
+           
+           {/* --- SOURCE CONTEXT PANEL (Collapsible) --- */}
+           {showSource && (
+             <div className="w-full xl:w-1/3 flex flex-col gap-6 animate-in slide-in-from-left-4 fade-in duration-500">
+               <div className="flex items-center justify-between px-2">
+                  <h3 className="font-playfair text-xl font-bold italic">Source Document</h3>
+                  <div className="text-[10px] font-bold text-zinc-400">Context</div>
+               </div>
+               <div className="bg-white rounded-[2.5rem] border border-zinc-100 min-h-[650px] max-h-[800px] shadow-2xl flex flex-col overflow-hidden">
+                 
+                 {/* Ambiguities Alert */}
+                 {results?.fact_sheet?.ambiguous_statements && results.fact_sheet.ambiguous_statements.length > 0 && (
+                 <div className="p-6 bg-yellow-50 border-b border-yellow-100 flex flex-col gap-3 shrink-0">
+                    <div className="flex items-center gap-2 text-yellow-800 text-xs font-bold uppercase tracking-widest">
+                       <span>⚠️</span> Researcher Insights (Ambiguities)
+                    </div>
+                    <ul className="list-disc pl-5 text-[13px] text-yellow-900/80 space-y-1">
+                       {results.fact_sheet.ambiguous_statements.map((stmt: string, i: number) => (
+                          <li key={i}>{stmt}</li>
+                       ))}
+                    </ul>
+                 </div>
+                 )}
+
+                 <div className="p-8 flex-1 overflow-y-auto custom-scrollbar">
+                   <p className="text-sm font-outfit leading-relaxed text-zinc-600 whitespace-pre-wrap">
+                     {isLoading ? "Loading source text..." : results?.source_text || "No source text available."}
+                   </p>
+                 </div>
+               </div>
+             </div>
+           )}
+
+           {/* --- DRAFTS GRID --- */}
+           <div className={`flex-1 grid grid-cols-1 gap-8 transition-all duration-700 ${viewMode === 'desktop' ? (showSource ? 'xl:grid-cols-2 lg:grid-cols-2' : 'lg:grid-cols-3 xl:grid-cols-3') : 'grid-cols-1 md:grid-cols-3'}`}>
            
            {/* --- ARTICLE / BLOG --- */}
            <div className="flex flex-col gap-6">
               <div className="flex items-center justify-between px-2">
                  <h3 className="font-playfair text-xl font-bold italic">Blog Master</h3>
                  <div className="flex gap-2 text-[10px] font-bold text-zinc-400">
-                    <button className="hover:text-blue-600">Edit</button>
+                    <button onClick={() => navigator.clipboard.writeText(results?.drafts?.blog || "")} className="hover:text-blue-600">Copy</button>
                     <span>/</span>
                     <button className="hover:text-emerald-600">Approve</button>
                  </div>
@@ -119,7 +222,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
               <div className="flex items-center justify-between px-2">
                  <h3 className="font-playfair text-xl font-bold italic">Email Draft</h3>
                  <div className="flex gap-2 text-[10px] font-bold text-zinc-400">
-                    <button className="hover:text-blue-600">Edit</button>
+                    <button onClick={() => navigator.clipboard.writeText((results?.drafts?.email?.subject || "") + "\n\n" + (results?.drafts?.email?.body || ""))} className="hover:text-blue-600">Copy</button>
                     <span>/</span>
                     <button className="hover:text-emerald-600">Approve</button>
                  </div>
@@ -168,11 +271,8 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                           </div>
                        </div>
 
-                       <div className="space-y-6 text-[14px] text-zinc-700 leading-relaxed font-sans max-w-xl">
-                          <p>Hi there,</p>
-                          <p>Traditional content production is broken. It's too slow, too inconsistent, and frankly, too exhausting for modern marketing teams.</p>
-                          <p>That's why we've re-imagined the creative process from the ground up to empower marketing teams everywhere. Our autonomous factory is online now.</p>
-                          <p>Best,<br/><span className="font-bold">The Marketing Team</span></p>
+                       <div className="space-y-6 text-[14px] text-zinc-700 leading-relaxed font-sans max-w-xl whitespace-pre-wrap">
+                          {isLoading ? "Loading email body..." : (results?.drafts?.email?.body || "No email content generated.")}
                        </div>
 
                        <div className="mt-12 flex gap-3">
@@ -243,10 +343,57 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                     <button className="flex-1 py-3 bg-white border border-zinc-200 text-zinc-400 rounded-2xl text-[11px] font-bold transition-all hover:bg-zinc-50">Regenerate</button>
                  </div>
               </div>
-           </div>
+            </div>
 
+           </div>
         </div>
       </div>
+
+      {/* --- REFINE MODAL --- */}
+      {showRefineModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[2rem] border border-zinc-200 shadow-2xl p-8 max-w-2xl w-full flex flex-col gap-6 animate-in zoom-in-95 duration-200">
+            <div className="flex items-start justify-between">
+              <div className="flex gap-4 items-center">
+                <div className="h-12 w-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                </div>
+                <div>
+                  <h4 className="font-bold text-lg text-zinc-900">Request Revision</h4>
+                  <p className="text-sm text-zinc-500">Provide feedback for the Copywriter to instantly regenerate these drafts.</p>
+                </div>
+              </div>
+              <button onClick={() => setShowRefineModal(false)} className="h-8 w-8 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 transition-all">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            
+            <textarea 
+              value={feedbackText}
+              onChange={(e) => setFeedbackText(e.target.value)}
+              placeholder="e.g. Make the LinkedIn thread more professional, shorten the email, and don't oversell the features." 
+              className="w-full h-32 bg-zinc-50 border border-zinc-200 rounded-2xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none custom-scrollbar"
+            />
+            
+            <div className="flex justify-end gap-3 mt-2">
+              <button 
+                onClick={() => setShowRefineModal(false)}
+                className="px-6 py-3 bg-white border border-zinc-200 text-zinc-600 font-bold text-[13px] rounded-xl hover:bg-zinc-50 transition-all"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleRefine}
+                disabled={isRefining || !feedbackText.trim()}
+                className="px-8 py-3 bg-blue-600 text-white font-bold text-[13px] rounded-xl shadow-md hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2"
+              >
+                {isRefining ? "Queuing Pipeline..." : "Send to Assembly Line"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

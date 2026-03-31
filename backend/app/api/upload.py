@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from app.core.parser import ContentParser
 from app.services.storage import CampaignStorage
 from pydantic import BaseModel
@@ -14,27 +14,44 @@ class UploadResponse(BaseModel):
     raw_content_preview: Optional[str] = None
     status: str
 
+class LargeUploadRequest(BaseModel):
+    campaign_id: str
+    file_url: Optional[str] = None
+    filename: str
+
 @router.post("/upload", response_model=UploadResponse)
 async def upload_document(
     campaign_id: str, 
-    file: UploadFile = File(...)
+    file: Optional[UploadFile] = File(None),
+    file_url: Optional[str] = Form(None),
+    filename: Optional[str] = Form(None)
 ):
     """
-    Endpoint to receive source documents from the dashboard.
-    For Phase 2 Debugging: Extracts & returns a preview of the parsed content.
+    Endpoint to receive source documents. Supports raw multi-part (small) 
+    or file_url from Supabase (large).
     """
-    # 1. Size Validation (redundancy for frontend)
-    max_size = 25 * 1024 * 1024
-    if file.size and file.size > max_size:
-        raise HTTPException(status_code=413, detail="File too large (Max 25MB)")
+    if file_url:
+        parsed_text = f"[FILE_URL_REFERENCE]::{file_url}::{filename or 'document'}"
+        character_count = 0
+        actual_filename = filename or "cloud_document"
+    else:
+        if not file:
+            raise HTTPException(status_code=400, detail="No file or URL provided.")
+            
+        # Size Validation (redundancy for frontend)
+        max_size = 25 * 1024 * 1024
+        if file.size and file.size > max_size:
+            raise HTTPException(status_code=413, detail="File too large (Max 25MB)")
 
-    # 2. Parse the content
-    parsed_text = await ContentParser.extract_text(file)
-    
+        # Parse the content
+        parsed_text = await ContentParser.extract_text(file)
+        character_count = len(parsed_text)
+        actual_filename = file.filename
+
     if not parsed_text or len(parsed_text.strip()) == 0:
         raise HTTPException(status_code=422, detail="Extracted document content is empty.")
 
-    # 3. Store for the SSE Streamer to consume
+    # Store for the SSE Streamer to consume
     CampaignStorage.save_campaign(campaign_id, parsed_text)
 
     # 4. Return the preview for confirmation (to be hidden in later phases)
@@ -42,7 +59,7 @@ async def upload_document(
     preview = parsed_text[:1000] + ("..." if len(parsed_text) > 1000 else "")
 
     return UploadResponse(
-        filename=file.filename,
+        filename=actual_filename,
         campaign_id=campaign_id,
         character_count=len(parsed_text),
         raw_content_preview=preview,

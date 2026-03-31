@@ -2,6 +2,7 @@
 
 import React, { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/src/utils/supabase/client";
 
 interface FileUploadProps {
   onUploadStart?: () => void;
@@ -40,9 +41,28 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     try {
       const mockId = `CAM-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
       
+      const supabase = createClient();
+      const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '');
+      const uniqueFileName = `${mockId}_${safeName}`;
+      
+      // Upload to Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('campaign_documents')
+        .upload(uniqueFileName, file, { cacheControl: '3600', upsert: false });
+
+      if (uploadError) {
+        throw new Error(`Cloud upload failed: ${uploadError.message}`);
+      }
+
+      // Get Public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('campaign_documents')
+        .getPublicUrl(uniqueFileName);
+
       // 3. Prepare FormData for FastAPI
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file_url", publicUrl);
+      formData.append("filename", file.name);
       
       // 4. Submit to Backend
       const response = await fetch(`http://localhost:8000/api/v1/campaign/upload?campaign_id=${mockId}`, {

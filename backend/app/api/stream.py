@@ -1,19 +1,30 @@
 import asyncio
 import json
-from datetime import datetime
+import re
+from datetime import datetime, timezone
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from app.agents.workflow import create_assembly_line_graph
 from app.services.storage import CampaignStorage
+from app.services.stream_bus import get_queue, cleanup_queue
 
 router = APIRouter(prefix="/campaign", tags=["Real-time Stream"])
 
+
+def _agent_display(node_name: str) -> str:
+    return {"researcher": "Lead Researcher", "copywriter": "Creative Copy", "editor": "Editor-in-Chief"}.get(node_name, node_name.capitalize())
+
+
 async def event_generator(campaign_id: str):
     """
-    Executes the LangGraph Assembly Line and yields live agent activity log-by-log.
+    Runs the LangGraph assembly line in a background task and yields SSE events
+    by reading from two sources:
+      1. The shared async queue (typing chunks pushed by node functions)
+      2. Node start/end events from astream_events (for thinking/completed states)
     """
     
-    # 1. Fetch the document content we saved during upload
+    # 1. Load campaign data
     campaign = CampaignStorage.get_campaign(campaign_id)
     if not campaign:
         yield f"data: {json.dumps({'error': 'Campaign context not found. Please re-upload.'})}\n\n"
@@ -21,101 +32,142 @@ async def event_generator(campaign_id: str):
 
     source_text = campaign["source_text"]
 
-    # 2. Initialize the Graph
+    # 2. Initialize the graph & state
     assembly_line = create_assembly_line_graph()
-    
-    # 3. Define the Initial State
     initial_state = {
         "campaign_id": campaign_id,
         "source_text": source_text,
-        "fact_sheet": None,
-        "drafts": {},
-        "correction_notes": None,
+        "fact_sheet": campaign.get("fact_sheet"),
+        "drafts": campaign.get("drafts", {}),
+        "correction_notes": campaign.get("correction_notes"),
         "is_approved": False,
         "logs": []
     }
 
-    # 0. Immediate Handshake (UI Connection Confirmed)
-    yield f"data: {json.dumps({'status': 'connected', 'agent_name': 'System', 'message': 'Assembly Line Synchronized. Waiting for agents...'})}\n\n"
+    # 3. Handshake
+    yield f"data: {json.dumps({'status': 'connected', 'agent_name': 'System', 'message': 'Assembly Line Synchronized.'})}\n\n"
 
-    # 4. Stream the Graph Execution using the Events API
-    final_state = initial_state.copy()
-    try:
-        async for event in assembly_line.astream_events(
-            initial_state, 
-            version="v2",
-            config={"configurable": {"thread_id": campaign_id}}
-        ):
-            kind = event["event"]
-            meta = event.get("metadata", {})
+    # 4. Get the shared queue for this campaign
+    q = get_queue(campaign_id)
+
+    # 5. Run the graph in a background task
+    # 5. Run the graph in a background task
+    final_full_state = {}
+    graph_error = None
+
+    async def run_graph():
+        nonlocal final_full_state, graph_error
+        try:
+            # We use ainvoke for the final state as it's the most reliable source of truth
+            # but keep astream_events for the real-time logs/typing
+            processed_nodes = set()
             
-            # Robust node identification: Check metadata OR the event name itself
-            node_name = meta.get("langgraph_node") or event.get("name", "")
-            if node_name not in ["researcher", "copywriter", "editor"]:
-                continue
+            async for event in assembly_line.astream_events(
+                initial_state, version="v2",
+                config={"configurable": {"thread_id": campaign_id}}
+            ):
+                kind = event["event"]
+                meta = event.get("metadata", {})
+                node_name = meta.get("langgraph_node") or event.get("name", "")
 
-            # --- AGENT START EVENT ---
-            if kind == "on_node_start":
-                agent_name = node_name.capitalize()
-                if node_name == "researcher": agent_name = "Lead Researcher"
-                if node_name == "copywriter": agent_name = "Creative Copy"
-                if node_name == "editor": agent_name = "Editor-in-Chief"
-
-                log_data = {
-                    "agent_id": node_name,
-                    "agent_name": agent_name,
-                    "message": f"Analyzing campaign context and initiating {node_name} phase...",
-                    "status": "thinking",
-                    "timestamp": datetime.now().isoformat()
-                }
-                yield f"data: {json.dumps(log_data)}\n\n"
-
-            # --- AGENT COMPLETION EVENT ---
-            elif (kind == "on_chain_end" or kind == "on_node_end"):
-                output = event.get("data", {}).get("output")
-                if not output or not isinstance(output, dict):
+                if node_name not in ["researcher", "copywriter", "editor"]:
                     continue
-                
-                # Persistence Sync
-                for key, val in output.items():
-                    final_state[key] = val
-                
-                # Stream logs out
-                if "logs" in output:
-                    for log in output.get("logs", []):
-                        l_data = log.model_dump() if hasattr(log, "model_dump") else log.dict()
-                        if not l_data.get("timestamp"):
-                             l_data["timestamp"] = datetime.now().isoformat()
-                        yield f"data: {json.dumps(l_data, default=str)}\n\n"
-                        
-    except Exception as e:
-        import traceback
-        error_msg = f"Assembly Line Failure: {str(e)}"
-        print(f"ERROR IN STREAM: {error_msg}")
-        print(traceback.format_exc())
-        CampaignStorage.save_error(campaign_id, error_msg)
-        yield f"data: {json.dumps({'error': error_msg})}\n\n"
-        return
 
-    # 5. Persist the real AI output for the Review Page
-    if final_state.get("fact_sheet"):
+                if kind == "on_node_start":
+                    await q.put({
+                        "agent_id": node_name,
+                        "agent_name": _agent_display(node_name),
+                        "message": f"Initiating {_agent_display(node_name)} phase...",
+                        "status": "thinking",
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    })
+
+                elif kind == "on_node_end":
+                    output = event.get("data", {}).get("output")
+                    if output and isinstance(output, dict):
+                        # Merge output into our tracking state
+                        final_full_state.update(output)
+                        if "logs" in output:
+                            for log in output.get("logs", []):
+                                l_data = log.model_dump() if hasattr(log, "model_dump") else (log.dict() if hasattr(log, "dict") else log)
+                                if not l_data.get("timestamp"):
+                                    l_data["timestamp"] = datetime.now(timezone.utc).isoformat()
+                                await q.put(l_data)
+
+            # Signal completion
+            await q.put({"__done__": True})
+        except Exception as e:
+            graph_error = str(e)
+            import traceback
+            print(f"!!! CRITICAL GRAPH ERROR: {graph_error}")
+            traceback.print_exc()
+            await q.put({"__error__": graph_error})
+
+    # Start the graph
+    graph_task = asyncio.create_task(run_graph())
+
+    # 6. Stream events from the queue to SSE
+    terminal_error_received = None
+    try:
+        while True:
+            try:
+                event = await asyncio.wait_for(q.get(), timeout=600)
+            except asyncio.TimeoutError:
+                yield f"data: {json.dumps({'error': 'Stream timeout after 600s.'})}\n\n"
+                break
+
+            if isinstance(event, dict):
+                if event.get("__done__"):
+                    break
+                if event.get("__error__"):
+                    terminal_error_received = event["__error__"]
+                    yield f"data: {json.dumps({'error': terminal_error_received})}\n\n"
+                    break
+
+            yield f"data: {json.dumps(event, default=str)}\n\n"
+
+    finally:
+        if not graph_task.done():
+            graph_task.cancel()
+        cleanup_queue(campaign_id)
+
+    # 7. Final Verification & Persistence
+    if terminal_error_received:
+        CampaignStorage._data[campaign_id]["status"] = "error"
+        CampaignStorage._save()
+        return # already yielded error in the loop
+
+    # Use the tracking state built from node outputs
+    has_error = False
+    error_message = "Pipeline verification failed: No data produced."
+    
+    # Check for error logs in the final state logs
+    if "logs" in final_full_state:
+        for log in final_full_state["logs"]:
+            status = getattr(log, "status", "") if not isinstance(log, dict) else log.get("status", "")
+            if "error" in str(status).lower():
+                has_error = True
+                error_message = getattr(log, "message", "Unknown node error") if not isinstance(log, dict) else log.get("message", "Unknown node error")
+                break
+        
+    if final_full_state.get("fact_sheet") and not has_error:
         CampaignStorage.save_results(
-            campaign_id, 
-            final_state["fact_sheet"], 
-            final_state["drafts"]
+            campaign_id,
+            final_full_state["fact_sheet"],
+            final_full_state.get("drafts", {})
         )
+        await asyncio.sleep(0.5)
+        yield f"data: {json.dumps({'status': 'completed', 'next_step': 'review'})}\n\n"
+    else:
+        CampaignStorage._data[campaign_id]["status"] = "error"
+        CampaignStorage._save()
+        await asyncio.sleep(0.5)
+        yield f"data: {json.dumps({'error': error_message})}\n\n"
 
-    # 6. Final Completion Event (UI Trigger for navigation)
-    # Add a small buffer to ensure the filesystem has finished the save
-    await asyncio.sleep(1)
-    yield f"data: {json.dumps({'status': 'completed', 'next_step': 'review'})}\n\n"
 
 @router.get("/{campaign_id}/results")
 async def get_campaign_results(campaign_id: str):
-    """
-    Returns the final Fact-Sheet and AI drafts from memory.
-    Called by the Frontend Review Page.
-    """
+    """Returns the final Fact-Sheet and AI drafts."""
     campaign = CampaignStorage.get_campaign(campaign_id)
     if not campaign or campaign.get("status") != "completed":
         raise HTTPException(status_code=404, detail="Campaign results not ready.")
@@ -123,15 +175,14 @@ async def get_campaign_results(campaign_id: str):
     return {
         "fact_sheet": campaign["fact_sheet"],
         "drafts": campaign["drafts"],
+        "source_text": campaign.get("source_text", ""),
         "campaign_id": campaign_id
     }
 
+
 @router.get("/{campaign_id}/stream")
 async def stream_campaign_progress(campaign_id: str, request: Request):
-    """
-    Server-Sent Events (SSE) Endpoint.
-    The Client will open this connection to receive live logs from the agents.
-    """
+    """SSE endpoint for live agent streaming."""
     return StreamingResponse(
         event_generator(campaign_id),
         media_type="text/event-stream",
@@ -142,3 +193,23 @@ async def stream_campaign_progress(campaign_id: str, request: Request):
             "Access-Control-Allow-Origin": "*",
         }
     )
+
+
+class RefineRequest(BaseModel):
+    correction_notes: str
+
+
+@router.post("/{campaign_id}/refine")
+async def refine_campaign(campaign_id: str, request: RefineRequest):
+    """Triggers a manual refinement loop."""
+    campaign = CampaignStorage.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    CampaignStorage._load()
+    if campaign_id in CampaignStorage._data:
+        CampaignStorage._data[campaign_id]["status"] = "processing"
+        CampaignStorage._data[campaign_id]["correction_notes"] = request.correction_notes
+        CampaignStorage._save()
+    
+    return {"status": "success", "message": "Campaign queued for manual refinement."}
