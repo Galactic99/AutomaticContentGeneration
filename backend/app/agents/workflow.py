@@ -1,6 +1,7 @@
 from langgraph.graph import StateGraph, END
 from app.agents.state import CampaignState
 from app.agents.nodes import research_node, copywriter_node, editor_node
+from app.core.schemas import FactSheet, AgentLogEntry, FactItem
 
 def should_start_creative(state: CampaignState):
     """Safety check: Stop if research failed or produced no facts."""
@@ -62,5 +63,8 @@ def create_assembly_line_graph():
         }
     )
 
-    # 4. Compile
-    return builder.compile()
+    # 4. Compile with state persistence (Checkpointer)
+    from langgraph.checkpoint.memory import MemorySaver
+    checkpointer = MemorySaver()
+    
+    return builder.compile(checkpointer=checkpointer)

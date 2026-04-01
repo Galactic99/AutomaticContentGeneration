@@ -134,7 +134,8 @@ async def research_node(state: CampaignState) -> dict:
             raise ValueError(f"Failed to extract facts after 3 attempts. Last error: {last_error}")
 
         fact_sheet.campaign_id = state["campaign_id"]
-        msg = f"Fact-extraction complete: {len(fact_sheet.core_product_features)} features, {len(fact_sheet.technical_specs)} specs."
+        specs = fact_sheet.technical_specs or []
+        msg = f"Fact-extraction complete: {len(fact_sheet.core_product_features)} features, {len(specs)} specs."
         status = "completed"
     except Exception as e:
         typewriter_task.cancel()
@@ -176,7 +177,9 @@ async def copywriter_node(state: CampaignState) -> dict:
         voice_directives = ", ".join(fact_sheet.get('brand_voice_directives', []))
         facts_json = json.dumps(fact_sheet, default=str)
 
-    chain = prompt | model
+    from app.core.schemas import CampaignDrafts
+    structured_model = model.with_structured_output(CampaignDrafts)
+    chain = prompt | structured_model
     
     is_revision = bool(state.get("correction_notes"))
     state_msg = (
@@ -188,26 +191,15 @@ async def copywriter_node(state: CampaignState) -> dict:
     typewriter_task = asyncio.create_task(_push_typewriter_effect(campaign_id, "copywriter", state_msg))
     
     try:
-        response = await chain.ainvoke({
+        drafts_obj = await chain.ainvoke({
             "voice_directives": voice_directives,
             "facts_json": facts_json,
             "feedback_context": feedback_context
         })
         await typewriter_task
-        full_content = extract_text(response.content) if hasattr(response, "content") else str(response)
         
-        # Parse the final accumulated content
-        content = full_content.strip()
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0].strip()
-            
-        drafts = json.loads(content)
-        
-        if not isinstance(drafts, dict) or "blog" not in drafts:
-            raise ValueError("Invalid draft structure returned from LLM.")
-            
+        # response is already a CampaignDrafts Pydantic object
+        drafts = drafts_obj.model_dump()
         msg = "Revision complete. Changes pushed to Editor-in-Chief." if is_revision else "Drafts compiled and pushed to Editor-in-Chief."
         status = "completed"
 
@@ -216,15 +208,9 @@ async def copywriter_node(state: CampaignState) -> dict:
         import traceback
         print(f"!!! COPYWRITER NODE FAILED: {str(e)}")
         traceback.print_exc()
-        # Fallback to raw content if parsing failed but generation succeeded
-        if 'full_content' in locals() and full_content:
-            drafts = {"blog": full_content, "linkedin_thread": "Error parsing JSON."}
-            msg = "Drafting complete (parsing error)."
-            status = "completed"
-        else:
-            drafts = {}
-            msg = f"Drafting failed: {str(e)}"
-            status = "error"
+        drafts = {}
+        msg = f"Drafting failed: {str(e)}"
+        status = "error"
 
     return {
         "drafts": drafts,

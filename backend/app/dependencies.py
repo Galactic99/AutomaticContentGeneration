@@ -13,5 +13,6 @@ def get_gemini_model(model_name: str = "models/gemini-2.5-flash", temperature: f
         model=model_name,
         google_api_key=settings.GOOGLE_API_KEY,
         temperature=temperature,
+        max_tokens=4096,
         convert_system_message_to_human=True, 
     )

@@ -111,9 +111,9 @@ async def event_generator(campaign_id: str):
     try:
         while True:
             try:
-                event = await asyncio.wait_for(q.get(), timeout=600)
+                event = await asyncio.wait_for(q.get(), timeout=1200)
             except asyncio.TimeoutError:
-                yield f"data: {json.dumps({'error': 'Stream timeout after 600s.'})}\n\n"
+                yield f"data: {json.dumps({'error': 'Stream timeout after 1200s.'})}\n\n"
                 break
 
             if isinstance(event, dict):
@@ -137,9 +137,14 @@ async def event_generator(campaign_id: str):
         CampaignStorage._save()
         return # already yielded error in the loop
 
+    # Definitively retrieve the final state from the Memory Bank (Checkpointer)
+    config = {"configurable": {"thread_id": campaign_id}}
+    state_snapshot = assembly_line.get_state(config)
+    final_full_state = state_snapshot.values if state_snapshot else {}
+    
     # Use the tracking state built from node outputs
     has_error = False
-    error_message = "Pipeline verification failed: No data produced."
+    error_message = "Pipeline verification failed: The analysis was incomplete."
     
     # Check for error logs in the final state logs
     if "logs" in final_full_state:

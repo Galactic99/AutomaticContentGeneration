@@ -16,7 +16,7 @@ class AgentLogEntry(BaseModel):
 class FactItem(BaseModel):
     """A single verified piece of information with its origin."""
     fact: str
-    source_quote: str = Field(..., description="The exact sentence from the PDF that proves this fact.")
+    source_quote: Optional[str] = Field(None, description="The exact sentence from the source that proves this fact.")
     category: Optional[str] = None
 
 class FactSheet(BaseModel):
@@ -29,8 +29,8 @@ class FactSheet(BaseModel):
     # The Core Data
     value_proposition: str = Field(..., description="The 'Elevator Pitch' extracted from the source.")
     core_product_features: List[FactItem]
-    technical_specs: List[FactItem]
-    target_audience: List[str]
+    technical_specs: Optional[List[FactItem]] = Field(default_factory=list, description="Optional. Technical specs if found in the document.")
+    target_audience: Optional[List[str]] = Field(default_factory=list, description="Optional. Target audience segments if found in the document.")
     
     # Brand & Tone Context
     brand_voice_directives: List[str] = Field(
@@ -45,3 +45,13 @@ class FactSheet(BaseModel):
     )
     
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class EmailDraft(BaseModel):
+    subject: str = Field(..., description="Short, punchy B2B outreach subject line.")
+    body: str = Field(..., description="Under 150-word curiosity-driven email body.")
+
+class CampaignDrafts(BaseModel):
+    """Structured AI-generated marketing content."""
+    blog: str = Field(..., description="Full-length PAS-structured markdown blog post.")
+    linkedin_thread: Optional[List[str]] = Field(default_factory=list, description="Optional array of 3-5 social media posts.")
+    email: Optional[EmailDraft] = Field(None, description="Optional B2B outreach email draft.")
