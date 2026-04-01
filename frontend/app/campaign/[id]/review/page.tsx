@@ -175,9 +175,32 @@ ${results.drafts.email?.body || ''}
                  )}
 
                  <div className="p-8 flex-1 overflow-y-auto custom-scrollbar">
-                   <p className="text-sm font-outfit leading-relaxed text-zinc-600 whitespace-pre-wrap">
-                     {isLoading ? "Loading source text..." : results?.source_text || "No source text available."}
-                   </p>
+                    {isLoading ? (
+                      <p className="text-sm font-outfit text-zinc-400 italic">Processing source text...</p>
+                    ) : results?.source_text?.startsWith("[FILE_URL_REFERENCE]::") ? (
+                      <div className="flex flex-col items-center justify-center h-full gap-6 text-center animate-in fade-in zoom-in-95 duration-500">
+                        <div className="h-20 w-20 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shadow-inner">
+                          <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                        </div>
+                        <div className="space-y-2">
+                           <h4 className="font-bold text-lg">Source Document Ready</h4>
+                           <p className="text-sm text-zinc-500 max-w-[240px] mx-auto">This campaign was generated from an external document reference.</p>
+                        </div>
+                        <a 
+                          href={results.source_text.split("::")[1]} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="px-8 py-3 rounded-2xl bg-zinc-900 text-white text-[13px] font-bold shadow-xl shadow-zinc-200 transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
+                        >
+                          View Original Document
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                        </a>
+                      </div>
+                    ) : (
+                      <p className="text-sm font-outfit leading-relaxed text-zinc-600 whitespace-pre-wrap">
+                        {results?.source_text || "No source text available."}
+                      </p>
+                    )}
                  </div>
                </div>
              </div>
@@ -299,6 +322,15 @@ ${results.drafts.email?.body || ''}
            <div className="flex flex-col gap-6">
               <div className="flex items-center justify-between px-2">
                  <h3 className="font-playfair text-xl font-bold italic">Social Stream</h3>
+                  <div className="flex gap-2 text-[10px] font-bold text-zinc-400">
+                    <button onClick={() => {
+                        const content = socialPlatform === 'instagram' ? results?.drafts?.instagram_post : 
+                                        Array.isArray(results?.drafts?.linkedin_thread) ? results?.drafts?.linkedin_thread.join('\n\n') : results?.drafts?.linkedin_thread;
+                        navigator.clipboard.writeText(content || "");
+                    }} className="hover:text-blue-600">Copy</button>
+                    <span>/</span>
+                    <button className="hover:text-emerald-600">Approve</button>
+                 </div>
                  <div className="flex gap-2 p-1 bg-white border border-zinc-100 rounded-full shadow-sm">
                     <button onClick={() => setSocialPlatform('x')} className={`px-3 py-1 rounded-full text-[9px] font-bold transition-all ${socialPlatform === 'x' ? 'bg-zinc-900 text-white' : 'text-zinc-300 hover:text-zinc-900'}`}>X</button>
                     <button onClick={() => setSocialPlatform('linkedin')} className={`px-3 py-1 rounded-full text-[9px] font-bold transition-all ${socialPlatform === 'linkedin' ? 'bg-[#0077b5] text-white' : 'text-zinc-300 hover:text-zinc-900'}`}>in</button>
@@ -314,7 +346,7 @@ ${results.drafts.email?.body || ''}
                              <div className="h-10 w-10 rounded-full bg-zinc-900 flex-shrink-0" />
                              <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-1.5 mb-0.5"><span className="text-[14px] font-bold truncate">ContentFactory</span><span className="text-[12px] text-zinc-500">@CFactory &bull; 2h</span></div>
-                                <p className="text-[14px] leading-normal text-zinc-900 font-sans whitespace-pre-wrap">{isLoading ? "Loading..." : results?.drafts?.linkedin_thread || "No draft available."}</p>
+                                <p className="text-[14px] leading-normal text-zinc-900 font-sans whitespace-pre-wrap">{isLoading ? "Loading..." : (Array.isArray(results?.drafts?.linkedin_thread) ? results.drafts.linkedin_thread.join('\n\n') : results?.drafts?.linkedin_thread) || "No draft available."}</p>
                              </div>
                           </div>
                        </div>
@@ -325,7 +357,7 @@ ${results.drafts.email?.body || ''}
                                 <div className="h-10 w-10 rounded bg-[#0077b5] text-white flex items-center justify-center font-bold">CF</div>
                                 <div><div className="text-[13px] font-bold">ContentFactory AI</div><div className="text-[11px] text-zinc-500">2h &bull; Public</div></div>
                              </div>
-                             <p className="text-[13px] text-zinc-900 font-outfit leading-snug whitespace-pre-wrap">{isLoading ? "Loading..." : results?.drafts?.linkedin_thread || "No draft available."}</p>
+                             <p className="text-[13px] text-zinc-900 font-outfit leading-snug whitespace-pre-wrap">{isLoading ? "Loading..." : (Array.isArray(results?.drafts?.linkedin_thread) ? results.drafts.linkedin_thread.join('\n\n') : results?.drafts?.linkedin_thread) || "No draft available."}</p>
                              <div className="aspect-video bg-zinc-800 flex items-center justify-center"><h4 className="font-playfair text-lg text-white italic">The Assembly Line</h4></div>
                              <div className="flex items-center gap-6 pt-3 text-zinc-500 border-t border-zinc-100 font-bold text-[11px]"><span>Like</span><span>Comment</span><span>Repost</span></div>
                           </div>
@@ -334,7 +366,7 @@ ${results.drafts.email?.body || ''}
                        <div className="h-full bg-white animate-in fade-in duration-500">
                           <div className="p-3 flex items-center gap-2"><div className="h-7 w-7 rounded-full bg-gradient-to-tr from-orange-400 to-purple-600 p-[1px]"><div className="h-full w-full rounded-full bg-zinc-200" /></div><span className="text-[12px] font-bold">content.factory</span></div>
                           <div className="aspect-square bg-zinc-900 flex flex-col items-center justify-center relative"><div className="absolute inset-0 bg-gradient-to-br from-[#833ab4]/10 to-[#fcb045]/10" /><h4 className="font-playfair text-xl text-white italic">Pure Content.</h4></div>
-                          <div className="p-3 text-[12px] space-y-1"><p><span className="font-bold">content.factory</span> <span className="whitespace-pre-wrap">{isLoading ? "Loading..." : results?.drafts?.linkedin_thread || "No draft available."}</span></p></div>
+                          <div className="p-3 text-[12px] space-y-1"><p><span className="font-bold">content.factory</span> <span className="whitespace-pre-wrap">{isLoading ? "Loading..." : results?.drafts?.instagram_post || "No Instagram draft generated."}</span></p></div>
                        </div>
                     )}
                  </div>
