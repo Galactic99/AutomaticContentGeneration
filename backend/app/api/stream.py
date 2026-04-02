@@ -180,6 +180,7 @@ async def get_campaign_results(campaign_id: str):
     return {
         "fact_sheet": campaign["fact_sheet"],
         "drafts": campaign["drafts"],
+        "approvals": campaign.get("approvals", {}),
         "source_text": campaign.get("source_text", ""),
         "campaign_id": campaign_id
     }
@@ -218,3 +219,16 @@ async def refine_campaign(campaign_id: str, request: RefineRequest):
         CampaignStorage._save()
     
     return {"status": "success", "message": "Campaign queued for manual refinement."}
+
+
+class ApproveRequest(BaseModel):
+    platform: str # 'blog', 'email', 'social_x', 'social_linkedin', 'social_instagram'
+
+
+@router.patch("/{campaign_id}/approve")
+async def approve_campaign_draft(campaign_id: str, request: ApproveRequest):
+    """Toggles approval status for a specific platform draft."""
+    exists, is_approved = CampaignStorage.toggle_approval(campaign_id, request.platform)
+    if not exists:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    return {"status": "success", "platform": request.platform, "is_approved": is_approved}

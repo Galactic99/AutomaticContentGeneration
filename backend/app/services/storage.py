@@ -53,6 +53,11 @@ class CampaignStorage:
             cls._data[campaign_id]["fact_sheet"] = fact_sheet_dict
             cls._data[campaign_id]["drafts"] = drafts
             cls._data[campaign_id]["status"] = "completed"
+            
+            # Initialize approvals dictionary if not exists
+            if "approvals" not in cls._data[campaign_id]:
+                cls._data[campaign_id]["approvals"] = {}
+                
             cls._save()
 
     @classmethod
@@ -67,6 +72,27 @@ class CampaignStorage:
     def get_campaign(cls, campaign_id: str) -> Optional[Dict]:
         cls._load()
         return cls._data.get(campaign_id)
+
+    @classmethod
+    def toggle_approval(cls, campaign_id: str, platform: str):
+        cls._load()
+        if campaign_id in cls._data:
+            if "approvals" not in cls._data[campaign_id]:
+                cls._data[campaign_id]["approvals"] = {}
+            
+            if platform in cls._data[campaign_id]["approvals"]:
+                # If already approved, unverify it
+                del cls._data[campaign_id]["approvals"][platform]
+                is_approved = False
+            else:
+                # If not approved, verify it
+                from datetime import datetime, timezone
+                cls._data[campaign_id]["approvals"][platform] = datetime.now(timezone.utc).isoformat()
+                is_approved = True
+            
+            cls._save()
+            return True, is_approved
+        return False, False
 
     @classmethod
     def delete_campaign(cls, campaign_id: str):

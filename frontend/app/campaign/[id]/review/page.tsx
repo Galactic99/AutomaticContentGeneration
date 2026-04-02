@@ -15,7 +15,8 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
   const [showRefineModal, setShowRefineModal] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
   const [isRefining, setIsRefining] = useState(false);
-
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [approvals, setApprovals] = useState<Record<string, string>>({});
 
   const [isLoading, setIsLoading] = useState(true);
   const [results, setResults] = useState<any>(null);
@@ -30,6 +31,9 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
       })
       .then(data => {
         setResults(data);
+        if (data.approvals) {
+          setApprovals(data.approvals);
+        }
         setIsLoading(false);
       })
       .catch(err => {
@@ -77,6 +81,31 @@ ${results.drafts.email?.body || ''}
       console.error(err);
       alert("Failed to refine. Ensure the backend is running.");
       setIsRefining(false);
+    }
+  };
+
+  const handleApprove = async (platform: string) => {
+    try {
+      const response = await fetch(`http://localhost:8000/api/v1/campaign/${campaignId}/approve`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform }),
+      });
+      
+      const data = await response.json();
+      if (response.ok) {
+        setApprovals(prev => {
+          const next = { ...prev };
+          if (data.is_approved) {
+            next[platform] = new Date().toISOString();
+          } else {
+            delete next[platform];
+          }
+          return next;
+        });
+      }
+    } catch (err) {
+      console.error('Approval toggle failed:', err);
     }
   };
 
@@ -216,7 +245,18 @@ ${results.drafts.email?.body || ''}
                  <div className="flex gap-2 text-[10px] font-bold text-zinc-400">
                     <button onClick={() => navigator.clipboard.writeText(results?.drafts?.blog || "")} className="hover:text-blue-600">Copy</button>
                     <span>/</span>
-                    <button className="hover:text-emerald-600">Approve</button>
+                    {approvals.blog ? (
+                       <button 
+                          onClick={() => handleApprove('blog')}
+                          className="flex items-center gap-1 text-emerald-500 hover:text-emerald-700 transition-all group"
+                          title="Click to unverify"
+                       >
+                          <svg className="h-3 w-3 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path d="M5 13l4 4L19 7"/></svg>
+                          <span className="group-hover:line-through decoration-emerald-300">Verified</span>
+                       </button>
+                    ) : (
+                       <button onClick={() => handleApprove('blog')} className="hover:text-emerald-600">Approve</button>
+                    )}
                  </div>
               </div>
 
@@ -256,8 +296,27 @@ ${results.drafts.email?.body || ''}
                   </div>
 
                   <div className={`p-6 bg-zinc-50/80 backdrop-blur-md border-t border-zinc-100 flex gap-3 mt-auto shrink-0 z-10`}>
-                     <button className="flex-1 py-3 bg-zinc-900 text-white rounded-2xl text-[11px] font-bold shadow-lg shadow-zinc-200 transition-all hover:scale-105 active:scale-95">Approve</button>
-                     <button className="flex-1 py-3 bg-white border border-zinc-200 text-zinc-400 rounded-2xl text-[11px] font-bold transition-all hover:bg-zinc-50 active:scale-95">Regenerate</button>
+                     {approvals.blog ? (
+                        <button 
+                           onClick={() => handleApprove('blog')}
+                           className="flex-1 py-3 bg-emerald-50 text-emerald-600 rounded-2xl text-[11px] font-bold border border-emerald-100 flex items-center justify-center gap-2 hover:bg-emerald-100 hover:border-emerald-200 transition-all group active:scale-95"
+                           title="Click to unverify"
+                        >
+                           <svg className="h-4 w-4 group-hover:rotate-12 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path d="M5 13l4 4L19 7"/></svg>
+                           Verified
+                        </button>
+                     ) : (
+                        <button 
+                           onClick={() => handleApprove('blog')}
+                           className="flex-1 py-3 bg-zinc-900 text-white rounded-2xl text-[11px] font-bold shadow-lg shadow-zinc-200 transition-all hover:scale-105 active:scale-95">
+                           Approve
+                        </button>
+                     )}
+                     <button 
+                        disabled={!!approvals.blog}
+                        className={`flex-1 py-3 text-[11px] font-bold border transition-all rounded-2xl ${approvals.blog ? 'bg-zinc-50 text-black border-zinc-100' : 'bg-white border-zinc-200 text-black hover:bg-zinc-50 active:scale-95'}`}>
+                        Regenerate
+                     </button>
                   </div>
 
                   {/* Mobile Home Indicator Mockup */}
@@ -276,7 +335,18 @@ ${results.drafts.email?.body || ''}
                  <div className="flex gap-2 text-[10px] font-bold text-zinc-400">
                     <button onClick={() => navigator.clipboard.writeText((results?.drafts?.email?.subject || "") + "\n\n" + (results?.drafts?.email?.body || ""))} className="hover:text-blue-600">Copy</button>
                     <span>/</span>
-                    <button className="hover:text-emerald-600">Approve</button>
+                    {approvals.email ? (
+                       <button 
+                          onClick={() => handleApprove('email')}
+                          className="flex items-center gap-1 text-emerald-500 hover:text-emerald-700 transition-all group"
+                          title="Click to unverify"
+                       >
+                          <svg className="h-3 w-3 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path d="M5 13l4 4L19 7"/></svg>
+                          <span className="group-hover:line-through decoration-emerald-300">Verified</span>
+                       </button>
+                    ) : (
+                       <button onClick={() => handleApprove('email')} className="hover:text-emerald-600">Approve</button>
+                    )}
                  </div>
               </div>
 
@@ -332,7 +402,7 @@ ${results.drafts.email?.body || ''}
                               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M3 10h10a8 8 0 018 8v2M3 10l5 5m-5-5l5-5"/></svg>
                               Reply to Thread
                            </button>
-                           <button className="w-full py-4 rounded-xl bg-white border border-zinc-200 text-[13px] font-bold text-zinc-400 flex items-center justify-center gap-2 transition-all hover:bg-zinc-50">
+                           <button className="w-full py-4 rounded-xl bg-white border border-zinc-200 text-[13px] font-bold text-black flex items-center justify-center gap-2 transition-all hover:bg-zinc-50">
                               Forward Draft
                            </button>
                         </div>
@@ -340,8 +410,27 @@ ${results.drafts.email?.body || ''}
                   </div>
 
                   <div className={`p-6 bg-zinc-50/80 backdrop-blur-md border-t border-zinc-100 flex gap-3 mt-auto shrink-0 z-10`}>
-                     <button className="flex-1 py-3 bg-zinc-900 text-white rounded-2xl text-[11px] font-bold shadow-lg shadow-zinc-200 transition-all hover:scale-105 active:scale-95">Approve</button>
-                     <button className="flex-1 py-3 bg-white border border-zinc-200 text-zinc-400 rounded-2xl text-[11px] font-bold transition-all hover:bg-zinc-50 active:scale-95">Regenerate</button>
+                     {approvals.email ? (
+                        <button 
+                           onClick={() => handleApprove('email')}
+                           className="flex-1 py-3 bg-emerald-50 text-emerald-600 rounded-2xl text-[11px] font-bold border border-emerald-100 flex items-center justify-center gap-2 hover:bg-emerald-100 hover:border-emerald-200 transition-all group active:scale-95"
+                           title="Click to unverify"
+                        >
+                           <svg className="h-4 w-4 group-hover:rotate-12 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path d="M5 13l4 4L19 7"/></svg>
+                           Verified
+                        </button>
+                     ) : (
+                        <button 
+                           onClick={() => handleApprove('email')}
+                           className="flex-1 py-3 bg-zinc-900 text-white rounded-2xl text-[11px] font-bold shadow-lg shadow-zinc-200 transition-all hover:scale-105 active:scale-95">
+                           Approve
+                        </button>
+                     )}
+                     <button 
+                        disabled={!!approvals.email}
+                        className={`flex-1 py-3 text-[11px] font-bold border transition-all rounded-2xl ${approvals.email ? 'bg-zinc-50 text-black border-zinc-100' : 'bg-white border-zinc-200 text-black hover:bg-zinc-50 active:scale-95'}`}>
+                        Regenerate
+                     </button>
                   </div>
 
                   {/* Mobile Home Indicator Mockup */}
@@ -364,7 +453,18 @@ ${results.drafts.email?.body || ''}
                         navigator.clipboard.writeText(content || "");
                     }} className="hover:text-blue-600">Copy</button>
                     <span>/</span>
-                    <button className="hover:text-emerald-600">Approve</button>
+                    {approvals[`social_${socialPlatform}`] ? (
+                       <button 
+                          onClick={() => handleApprove(`social_${socialPlatform}`)}
+                          className="flex items-center gap-1 text-emerald-500 hover:text-emerald-700 transition-all group"
+                          title="Click to unverify"
+                       >
+                          <svg className="h-3 w-3 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path d="M5 13l4 4L19 7"/></svg>
+                          <span className="group-hover:line-through decoration-emerald-300">Verified</span>
+                       </button>
+                    ) : (
+                       <button onClick={() => handleApprove(`social_${socialPlatform}`)} className="hover:text-emerald-600">Approve</button>
+                    )}
                  </div>
                  <div className="flex gap-2 p-1 bg-white border border-zinc-100 rounded-full shadow-sm">
                     <button onClick={() => setSocialPlatform('x')} className={`px-3 py-1 rounded-full text-[9px] font-bold transition-all ${socialPlatform === 'x' ? 'bg-zinc-900 text-white' : 'text-zinc-300 hover:text-zinc-900'}`}>X</button>
@@ -502,9 +602,28 @@ ${results.drafts.email?.body || ''}
                  </div>
 
                  <div className={`p-6 bg-zinc-50/80 backdrop-blur-md border-t border-zinc-100 flex gap-3 mt-auto shrink-0 z-10`}>
-                    <button className="flex-1 py-3 bg-zinc-900 text-white rounded-2xl text-[11px] font-bold shadow-lg shadow-zinc-200 transition-all hover:scale-105 active:scale-95">Approve</button>
-                    <button className="flex-1 py-3 bg-white border border-zinc-200 text-zinc-400 rounded-2xl text-[11px] font-bold transition-all hover:bg-zinc-50 active:scale-95">Regenerate</button>
-                 </div>
+                     {approvals[`social_${socialPlatform}`] ? (
+                        <button 
+                           onClick={() => handleApprove(`social_${socialPlatform}`)}
+                           className="flex-1 py-3 bg-emerald-50 text-emerald-600 rounded-2xl text-[11px] font-bold border border-emerald-100 flex items-center justify-center gap-2 hover:bg-emerald-100 hover:border-emerald-200 transition-all group active:scale-95"
+                           title="Click to unverify"
+                        >
+                           <svg className="h-4 w-4 group-hover:rotate-12 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path d="M5 13l4 4L19 7"/></svg>
+                           Verified
+                        </button>
+                     ) : (
+                        <button 
+                           onClick={() => handleApprove(`social_${socialPlatform}`)}
+                           className="flex-1 py-3 bg-zinc-900 text-white rounded-2xl text-[11px] font-bold shadow-lg shadow-zinc-200 transition-all hover:scale-105 active:scale-95">
+                           Approve
+                        </button>
+                     )}
+                     <button 
+                        disabled={!!approvals[`social_${socialPlatform}`]}
+                        className={`flex-1 py-3 text-[11px] font-bold border transition-all rounded-2xl ${approvals[`social_${socialPlatform}`] ? 'bg-zinc-50 text-black border-zinc-100' : 'bg-white border-zinc-200 text-black hover:bg-zinc-50 active:scale-95'}`}>
+                        Regenerate
+                     </button>
+                  </div>
 
                  {/* Mobile Home Indicator Mockup */}
                  {viewMode === 'mobile' && (
