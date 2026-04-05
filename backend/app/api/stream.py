@@ -13,7 +13,12 @@ router = APIRouter(prefix="/campaign", tags=["Real-time Stream"])
 
 
 def _agent_display(node_name: str) -> str:
-    return {"researcher": "Lead Researcher", "copywriter": "Creative Copy", "editor": "Editor-in-Chief"}.get(node_name, node_name.capitalize())
+    return {
+        "researcher": "Researcher", 
+        "copywriter": "Copywriter", 
+        "editor": "Editor",
+        "system": "System"
+    }.get(node_name, node_name.capitalize())
 
 
 async def event_generator(campaign_id: str):
@@ -43,9 +48,24 @@ async def event_generator(campaign_id: str):
         "is_approved": False,
         "logs": []
     }
-
-    # 3. Handshake
-    yield f"data: {json.dumps({'status': 'connected', 'agent_name': 'System', 'message': 'Assembly Line Synchronized.'})}\n\n"
+    
+    # Handshake & Initialization
+    q = get_queue(campaign_id)
+    await q.put({
+        "status": "connected", 
+        "agent_id": "system",
+        "agent_name": "System", 
+        "message": "Assembly Line Synchronized.",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    
+    await q.put({
+        "agent_id": "system",
+        "agent_name": "System",
+        "message": "Campaign initialized. Waking up agents...", 
+        "status": "completed",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
 
     # 4. Get the shared queue for this campaign
     q = get_queue(campaign_id)
@@ -74,19 +94,43 @@ async def event_generator(campaign_id: str):
                     continue
 
                 if kind == "on_node_start":
+                    display_name = _agent_display(node_name)
+                    # Use "Thinking" status but we don't need a static message here 
+                    # as the nodes now push their own conversational "Waking up" messages
                     await q.put({
                         "agent_id": node_name,
-                        "agent_name": _agent_display(node_name),
-                        "message": f"Initiating {_agent_display(node_name)} phase...",
+                        "agent_name": display_name,
                         "status": "thinking",
                         "timestamp": datetime.now(timezone.utc).isoformat()
                     })
+                    
+                    if node_name == "copywriter":
+                         await q.put({
+                            "agent_id": "system",
+                            "agent_name": "System",
+                            "message": "Copywriter is running on Gemini 1.5 Pro.",
+                            "status": "completed",
+                            "timestamp": datetime.now(timezone.utc).isoformat()
+                        })
 
                 elif kind == "on_node_end":
                     output = event.get("data", {}).get("output")
                     if output and isinstance(output, dict):
                         # Merge output into our tracking state
                         final_full_state.update(output)
+                        
+                        # System milestone for revision loops
+                        if node_name == "editor" and "loop_count" in output:
+                            loops = output["loop_count"]
+                            if not output.get("is_approved"):
+                                await q.put({
+                                    "agent_id": "system",
+                                    "agent_name": "System",
+                                    "message": f"Revision cycle {loops}/5",
+                                    "status": "completed",
+                                    "timestamp": datetime.now(timezone.utc).isoformat()
+                                })
+
                         if "logs" in output:
                             for log in output.get("logs", []):
                                 l_data = log.model_dump() if hasattr(log, "model_dump") else (log.dict() if hasattr(log, "dict") else log)

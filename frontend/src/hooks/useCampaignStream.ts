@@ -26,6 +26,11 @@ export function useCampaignStream(campaignId: string) {
     copywriter: "idle",
     editor: "idle",
   });
+  const [lastAgentMessage, setLastAgentMessage] = useState<Record<string, string>>({
+    researcher: "Waiting for start...",
+    copywriter: "Awaiting research...",
+    editor: "Awaiting drafts...",
+  });
 
   useEffect(() => {
     if (!campaignId) return;
@@ -59,81 +64,84 @@ export function useCampaignStream(campaignId: string) {
         }
 
         const agentId = data.agent_id as keyof AgentPhases;
+        const isMainAgent = ["researcher", "copywriter", "editor"].includes(data.agent_id);
 
         // --- Phase State Machine ---
-        if (data.status === "thinking") {
-          setActiveAgentId(agentId);
-          setAgentPhases((prev) => {
-            const next = { ...prev, [agentId]: "thinking" as AgentPhase };
-            // Feedback loop: if copywriter restarts, reset editor
-            if (agentId === "copywriter" && prev.copywriter === "completed") {
-              next.editor = "idle";
+        if (isMainAgent) {
+          if (data.status === "thinking") {
+            setActiveAgentId(agentId);
+            setAgentPhases((prev) => {
+              const next = { ...prev, [agentId]: "thinking" as AgentPhase };
+              // Feedback loop: if copywriter restarts, reset editor
+              if (agentId === "copywriter" && prev.copywriter === "completed") {
+                next.editor = "idle";
+              }
+              return next;
+            });
+          } else if (data.status === "typing") {
+            setActiveAgentId(agentId);
+            setAgentPhases((prev) => ({ ...prev, [agentId]: "typing" as AgentPhase }));
+          } else if (data.status === "completed") {
+            setAgentPhases((prev) => ({ ...prev, [agentId]: "completed" as AgentPhase }));
+            setActiveAgentId((prev) => (prev === agentId ? null : prev));
+            if (data.message) {
+              setLastAgentMessage(prev => ({ ...prev, [agentId]: data.message }));
             }
-            return next;
-          });
-        } else if (data.status === "typing") {
-          setActiveAgentId(agentId);
-          setAgentPhases((prev) => ({ ...prev, [agentId]: "typing" as AgentPhase }));
-        } else if (data.status === "completed") {
-          setAgentPhases((prev) => ({ ...prev, [agentId]: "completed" as AgentPhase }));
-          setActiveAgentId((prev) => (prev === agentId ? null : prev));
+          }
         }
 
         // --- Log Accumulation ---
         if (data.type === "chunk") {
-          // CHUNK MODE: append text to the existing typing bubble for this agent
+          // CHUNK MODE: Only update the very last log if it's for this agent and is in an active state
           setLogs((prev) => {
-            const lastIdx = prev.findLastIndex(
-              (l) => l.agent_id === agentId && (l.status === "typing" || l.status === "thinking")
-            );
-            if (lastIdx >= 0) {
-              // Append the new chunk to the existing bubble
+            if (prev.length === 0) return prev;
+            const last = prev[prev.length - 1];
+            if (last.agent_id === agentId && (last.status === "typing" || last.status === "thinking")) {
               const updated = [...prev];
-              const existing = updated[lastIdx];
-              // If the previous state was thinking, completely replace the placeholder with the first typed chunk
-              const newText = existing.status === "thinking" 
-                ? data.message 
-                : existing.message + data.message;
-              // Keep the bubble size manageable by trimming front
-              const trimmed = newText.length > 300 ? "..." + newText.slice(-280) : newText;
-              updated[lastIdx] = { ...existing, message: trimmed, status: "typing" };
+              const newText = last.status === "thinking" ? data.message : last.message + data.message;
+              updated[prev.length - 1] = { ...last, message: newText, status: "typing" };
+              
+              // LIVE SIDEBAR UPDATE: Only for main agents
+              if (isMainAgent) {
+                  setLastAgentMessage(lp => ({ 
+                    ...lp, 
+                    [agentId]: newText.length > 60 ? "..." + newText.slice(-57) : newText 
+                  }));
+              }
+              
               return updated;
             }
-            // No existing bubble — create one
-            return [...prev, { agent_id: agentId, agent_name: data.agent_name, message: data.message, status: "typing" as const, timestamp: data.timestamp }];
+            return prev;
           });
         } else if (data.type === "cursor_off") {
-          // CURSOR OFF MODE: Typewriter finished, switch status to thinking
+          const agentId_off = data.agent_id as keyof AgentPhases;
+          setAgentPhases((prev) => ({ ...prev, [agentId_off]: "thinking" as AgentPhase }));
           setLogs((prev) => {
-            const lastIdx = prev.findLastIndex(
-              (l) => l.agent_id === data.agent_id && l.status === "typing"
-            );
-            if (lastIdx >= 0) {
+            if (prev.length === 0) return prev;
+            const last = prev[prev.length - 1];
+            if (last.agent_id === data.agent_id && last.status === "typing") {
               const updated = [...prev];
-              updated[lastIdx] = { ...updated[lastIdx], status: "thinking" as const };
+              updated[prev.length - 1] = { ...last, status: "thinking" as const };
               return updated;
             }
             return prev;
           });
         } else {
-          // FULL MESSAGE MODE: completed events, thinking starts, etc.
-          const newLog: AgentLog = data;
+          // FULL MESSAGE MODE: Append as a fresh new bubble
+          const newLog: AgentLog = {
+            ...data,
+            timestamp: data.timestamp || new Date().toISOString()
+          };
           setLogs((prev) => {
-            // First, update any old logs for this agent to remove their persisting cursor
-            const updated = prev.map((l) => 
-              l.agent_id === newLog.agent_id && (l.status === "typing" || l.status === "thinking")
-                ? { ...l, status: "completed" as const }
-                : l
-            );
-
-            // If this is a "thinking" start and we already have a typing bubble for this agent,
-            // don't duplicate — just add fresh
-            const exists = updated.some(
-              (l) => l.message === newLog.message && l.agent_id === newLog.agent_id && l.status === newLog.status
-            );
-            if (exists) return updated;
+            // GLOBAL SYNC: When a new log arrives, mark ALL previous messages as completed 
+            // to clear any old pulses or indicators from ANY agent.
+            const updated = prev.map((l) => ({ ...l, status: "completed" as const }));
             return [...updated, newLog];
           });
+          
+          if (isMainAgent && newLog.agent_id) {
+            setLastAgentMessage(prev => ({ ...prev, [newLog.agent_id]: newLog.message }));
+          }
         }
       } catch (err) {
         console.error("Failed to parse SSE event:", err);
@@ -151,5 +159,5 @@ export function useCampaignStream(campaignId: string) {
     };
   }, [campaignId]);
 
-  return { logs, isCompleted, error, activeAgentId, agentPhases };
+  return { logs, isCompleted, error, activeAgentId, agentPhases, lastAgentMessage };
 }

@@ -7,7 +7,7 @@ import { use } from "react";
 
 export default function AgentRoomPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { logs, isCompleted, error, activeAgentId, agentPhases } = useCampaignStream(id);
+  const { logs, isCompleted, error, activeAgentId, agentPhases, lastAgentMessage } = useCampaignStream(id);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll chat to bottom on new logs
@@ -23,12 +23,17 @@ export default function AgentRoomPage({ params }: { params: Promise<{ id: string
     { id: "editor" as const, name: "Editor-in-Chief", role: "QA Gatekeeper", icon: "⚖️" },
   ];
 
-  function getPhaseLabel(phase: AgentPhase): string {
+  function getPhaseLabel(phase: AgentPhase, agentId: string): string {
     switch (phase) {
-      case "thinking": return "Analyzing...";
-      case "typing": return "Generating...";
-      case "completed": return "Finished";
-      case "idle": return "Waiting";
+      case "thinking": 
+        if (agentId === "researcher") return "Researching";
+        if (agentId === "copywriter") return "Ideating";
+        if (agentId === "editor") return "Auditing";
+        return "Thinking";
+      case "typing": return "In Progress";
+      case "completed": return "Complete";
+      case "idle": return "Idle";
+      default: return phase;
     }
   }
 
@@ -125,11 +130,16 @@ export default function AgentRoomPage({ params }: { params: Promise<{ id: string
                 </div>
 
                 {/* Status indicator */}
-                <div className="flex items-center gap-2">
-                  <span className={`h-2 w-2 rounded-full transition-colors duration-300 ${colors.dot}`} />
-                  <span className={`text-[11px] font-bold transition-colors duration-300 ${colors.text}`}>
-                    {getPhaseLabel(phase)}
-                  </span>
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`h-2 w-2 rounded-full transition-colors duration-300 ${colors.dot}`} />
+                    <span className={`text-[11px] font-bold transition-colors duration-300 ${colors.text}`}>
+                      {phase === "idle" && activeAgentId ? "Waiting..." : getPhaseLabel(phase, agent.id)}
+                    </span>
+                  </div>
+                  <p className={`text-[10px] line-clamp-1 italic px-0.5 transition-all ${isActive ? 'text-zinc-600 font-medium' : 'text-zinc-400'}`}>
+                    {lastAgentMessage[agent.id]}
+                  </p>
                 </div>
 
                 {/* Activity progress bar */}
@@ -208,29 +218,36 @@ export default function AgentRoomPage({ params }: { params: Promise<{ id: string
               return (
                 <div key={i} className="flex gap-4 max-w-[85%] animate-in slide-in-from-bottom-2 fade-in duration-200">
                   <div className={`h-9 w-9 shrink-0 rounded-xl flex items-center justify-center text-lg shadow-inner transition-colors ${
-                    isActiveLog ? 'bg-blue-50' : 'bg-zinc-50'
+                    isActiveLog ? 'bg-blue-50' : log.agent_id === 'system' ? 'bg-zinc-800 text-white' : 'bg-zinc-50'
                   }`}>
-                    {log.agent_id === 'researcher' ? '🧠' : log.agent_id === 'copywriter' ? '🎨' : '⚖️'}
+                    {log.agent_id === 'researcher' ? '🧠' : log.agent_id === 'copywriter' ? '🎨' : log.agent_id === 'system' ? '⚙️' : '⚖️'}
                   </div>
                   <div className="flex-1 min-w-0 space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="text-[12px] font-bold text-zinc-900">{log.agent_name}</span>
-                      {isActiveLog && (
+                    {isActiveLog ? (
                         <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse ${
                           isTyping ? 'text-blue-600 bg-blue-50' : 'text-amber-600 bg-amber-50'
                         }`}>
                           {isTyping ? "Generating" : "Thinking"}
+                        </span>
+                      ) : (
+                        <span>
+                          
                         </span>
                       )}
                       <span className="text-[10px] font-medium text-zinc-300 ml-auto whitespace-nowrap">
                         {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                       </span>
                     </div>
-                    <div className={`px-4 py-3 rounded-2xl rounded-tl-sm text-[13px] leading-relaxed border shadow-sm whitespace-pre-wrap break-words ${
-                      log.agent_id === 'researcher' ? 'bg-zinc-50 border-zinc-100 text-zinc-600' : 
-                      log.agent_id === 'copywriter' ? 'bg-blue-500 text-white border-blue-400' : 
-                      log.message.includes('REJECTED') ? 'bg-red-50 border-red-200 text-red-700' :
-                      'bg-emerald-50 border-emerald-100 text-emerald-700'
+                    <div className={`px-4 py-3 rounded-2xl rounded-tl-sm text-[13px] leading-relaxed border shadow-sm whitespace-pre-wrap break-words transition-all duration-300 ${
+                      isActiveLog ? 'ring-2 ring-offset-2 ring-blue-100' : ''
+                    } ${
+                      log.agent_id === 'system' ? 'bg-zinc-100 border-zinc-200 text-zinc-500 font-medium font-mono text-[11px]' :
+                      log.agent_id === 'researcher' ? 'bg-zinc-50 border-zinc-200 text-zinc-700' : 
+                      log.agent_id === 'copywriter' ? 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-100/50' : 
+                      log.message.includes('REJECT') ? 'bg-red-50 border-red-200 text-red-800' :
+                      'bg-emerald-50 border-emerald-200 text-emerald-800'
                     }`}>
                       <span className={isTyping ? 'typing-cursor' : ''}>{log.message}</span>
                     </div>

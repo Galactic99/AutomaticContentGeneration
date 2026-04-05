@@ -19,8 +19,13 @@ def extract_text(content) -> str:
 
 
 def _get_agent_display(node_name: str) -> str:
-    """Map node name to display name."""
-    return {"researcher": "Lead Researcher", "copywriter": "Creative Copy", "editor": "Editor-in-Chief"}.get(node_name, node_name.capitalize())
+    """Map node name to display name consistently with stream.py."""
+    return {
+        "researcher": "Researcher", 
+        "copywriter": "Copywriter", 
+        "editor": "Editor",
+        "system": "System"
+    }.get(node_name, node_name.capitalize())
 
 
 def _clean_chunk(text: str) -> str:
@@ -66,6 +71,17 @@ async def _push_typewriter_effect(campaign_id: str, agent_id: str, message: str)
     })
 
 
+async def _push_log(campaign_id: str, agent_id: str, message: str, status: str = "completed"):
+    """Push a discrete milestone log to the stream bus instantly."""
+    q = get_queue(campaign_id)
+    await q.put({
+        "agent_id": agent_id,
+        "agent_name": _get_agent_display(agent_id),
+        "message": message,
+        "status": status,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+
 async def research_node(state: CampaignState) -> dict:
     """
     Lead Researcher Node: Extracts facts from the source document.
@@ -80,14 +96,13 @@ async def research_node(state: CampaignState) -> dict:
             "logs": [AgentLogEntry(agent_id="researcher", agent_name="Lead Researcher", message="Using existing Fact-Sheet for this revision.", status="completed")]
         }
 
-    # Typewriter effect while LLM is generating
-    typewriter_task = asyncio.create_task(
-        _push_typewriter_effect(
-            campaign_id, 
-            "researcher", 
-            "Scanning source document for product features, specs, and audience signals..."
-        )
-    )
+    # Context-aware thinking message
+    await _push_log(campaign_id, "researcher", "I'm on it. Analyzing source material to extract ground truths.")
+    
+    source_snippet = state["source_text"][:50].strip().replace("\n", " ") + "..."
+    thought_msg = f"Analyzing source material now: '{source_snippet}'"
+    
+    typewriter_task = asyncio.create_task(_push_typewriter_effect(campaign_id, "researcher", thought_msg))
 
     model = get_gemini_model(temperature=0.0)
     structured_model = model.with_structured_output(FactSheet)
@@ -133,9 +148,12 @@ async def research_node(state: CampaignState) -> dict:
         if fact_sheet is None:
             raise ValueError(f"Failed to extract facts after 3 attempts. Last error: {last_error}")
 
+        # PUSH REAL-TIME MILESTONE
+        await _push_log(campaign_id, "researcher", "Done. Extracted core facts and passed them to the Copywriter.")
+
         fact_sheet.campaign_id = state["campaign_id"]
         specs = fact_sheet.technical_specs or []
-        msg = f"Fact-extraction complete: {len(fact_sheet.core_product_features)} features, {len(specs)} specs."
+        msg = f"Fact-extraction complete: {len(fact_sheet.core_product_features)} features & {len(specs)} technical specs verified. Passing the source context to our Creative Copywriter."
         status = "completed"
     except Exception as e:
         typewriter_task.cancel()
@@ -149,7 +167,9 @@ async def research_node(state: CampaignState) -> dict:
 
     return {
         "fact_sheet": fact_sheet,
-        "logs": [AgentLogEntry(agent_id="researcher", agent_name="Lead Researcher", message=msg, status=status)],
+        "logs": [
+            AgentLogEntry(agent_id="researcher", agent_name="Researcher", message=msg, status="completed")
+        ],
         "loop_count": 0
     }
 
@@ -181,13 +201,15 @@ async def copywriter_node(state: CampaignState) -> dict:
     structured_model = model.with_structured_output(CampaignDrafts)
     chain = prompt | structured_model
     
+    product_hint = (fact_sheet.get('core_product_features', [])[:1] or ["your offer"])[0] if isinstance(fact_sheet, dict) else (fact_sheet.core_product_features[:1] or ["your offer"])[0]
     is_revision = bool(state.get("correction_notes"))
-    state_msg = (
-        "Revising drafts based on Editor feedback..." if is_revision 
-        else "Drafting blog post, generating LinkedIn threads, and composing email templates..."
-    )
+    
+    if is_revision:
+        await _push_log(campaign_id, "copywriter", "Fixing issues and rewriting now...")
+    else:
+        await _push_log(campaign_id, "copywriter", f"Thanks. Drafting the Blog, Social thread, and Email copy for {product_hint} now...")
 
-    # Run typewriter effect while waiting
+    state_msg = "Generating campaign drafts..."
     typewriter_task = asyncio.create_task(_push_typewriter_effect(campaign_id, "copywriter", state_msg))
     
     try:
@@ -198,9 +220,15 @@ async def copywriter_node(state: CampaignState) -> dict:
         })
         await typewriter_task
         
+        # PUSH REAL-TIME MILESTONE
+        await _push_log(campaign_id, "copywriter", "Drafts are ready. Sending over to the Editor for review.")
+
         # response is already a CampaignDrafts Pydantic object
         drafts = drafts_obj.model_dump()
-        msg = "Revision complete. Changes pushed to Editor-in-Chief." if is_revision else "Drafts compiled and pushed to Editor-in-Chief."
+        if is_revision:
+            msg = "Revision cycle complete. I've addressed the Editor's feedback and polished the transitions. Sending back for final Quality Control."
+        else:
+            msg = "Multi-platform drafts are ready. We've optimized for Blog, Email, and Social streams. Handing off to the Editor-in-Chief for a final fact-check."
         status = "completed"
 
     except Exception as e:
@@ -214,7 +242,9 @@ async def copywriter_node(state: CampaignState) -> dict:
 
     return {
         "drafts": drafts,
-        "logs": [AgentLogEntry(agent_id="copywriter", agent_name="Creative Copy", message=msg, status=status)]
+        "logs": [
+            AgentLogEntry(agent_id="copywriter", agent_name="Copywriter", message=msg, status="completed")
+        ]
     }
 
 
@@ -239,8 +269,10 @@ async def editor_node(state: CampaignState) -> dict:
 
     chain = prompt | model
     
-    # Run typewriter effect while waiting
-    state_msg = "Auditing cross-channel drafts against strict fact-sheet requirements and brand tone..."
+    # Context-aware thinking message
+    await _push_log(campaign_id, "editor", "Reviewing content against brand safety and strict guidelines...")
+    
+    state_msg = "Auditing accuracy and tone..."
     typewriter_task = asyncio.create_task(_push_typewriter_effect(campaign_id, "editor", state_msg))
 
     try:
@@ -251,17 +283,20 @@ async def editor_node(state: CampaignState) -> dict:
         await typewriter_task
         full_content = extract_text(response.content) if hasattr(response, "content") else str(response)
         
+        # PUSH REAL-TIME MILESTONE (Intermediate)
+        # await _push_log(campaign_id, "editor", "Audit complete. Assessing technical compliance...")
+
         content = full_content.upper()
         is_approved = "PASSED" in content
         notes = full_content if not is_approved else None
         
         if is_approved:
-            msg = "Quality Check PASSED. Content satisfies all technical constraints."
+            msg = "Quality Check PASSED. Content satisfies all technical constraints and maintains brand voice. The assembly line is now complete."
             status = "completed"
         else:
-            short_notes = (notes or "").split("REJECTED")[-1].strip()[:150]
-            msg = f"REJECTED: Audit failed. Feedback: {short_notes}..."
-            status = "completed" # We use completed even for rejection so the graph can cycle
+            msg = f"Rejecting drafts. Issues found: REJECT\n\n{notes}"
+            status = "completed"
+                                             
 
     except Exception as e:
         typewriter_task.cancel()
@@ -277,5 +312,7 @@ async def editor_node(state: CampaignState) -> dict:
         "is_approved": is_approved,
         "correction_notes": notes,
         "loop_count": loop_num,
-        "logs": [AgentLogEntry(agent_id="editor", agent_name="Editor-in-Chief", message=msg, status=status)]
+        "logs": [
+            AgentLogEntry(agent_id="editor", agent_name="Editor", message=msg, status="completed")
+        ]
     }

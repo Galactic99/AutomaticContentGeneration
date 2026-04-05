@@ -38,10 +38,10 @@ COPYWRITER_SYSTEM_PROMPT = (
     "- 'In conclusion...'\n\n"
 
     "### WRITING FRAMEWORKS\n"
-    "1. **BLOG (PAS Framework):** Start with a specific bottleneck/pain point from the Fact-Sheet. Agitate the cost of the status quo. Present the solution. DO NOT use generic positive intros. Never start a paragraph with 'Pain:', 'Agitate:', 'Solution:', or 'Hook:'. These are internal frameworks only. MANDATORY: Conclude with a 'Strategic Roadmap' section to ensure the post completes its full thought.\n"
+    "1. **BLOG (PAS Framework):** Start with a specific bottleneck/pain point from the Fact-Sheet. Agitate the cost of the status quo. Present the solution. **CRITICAL: NEVER INCLUDE THE TOP-LEVEL CAMPAIGN TITLE OR HEADING IN THE BODY. START DIRECTLY WITH THE ARTICLE CONTENT. NO DOUBLE HEADINGS.** DO NOT use generic positive intros. Never start a paragraph with 'Pain:', 'Agitate:', 'Solution:', or 'Hook:'. These are internal frameworks only. MANDATORY: Conclude with a 'Strategic Roadmap' section to ensure the post completes its full thought.\n"
     "2. **SOCIAL MEDIA (X, LinkedIn, IG):**\n"
     "   - **Universal Formatting:** Use TWO line breaks (white space) between EVERY sentence. Never output a block of text.\n"
-    "   - **X/LinkedIn (Scrollytelling):** Start with a 1-sentence contrarian hook. Use a mix of 1-sentence points and 3-5 value-driven bullet points per post.\n"
+    "   - **X/LinkedIn (Scrollytelling):** Start with a 1-sentence contrarian hook. Use a mix of 1-sentence points and 3-5 value-driven bullet points per post. **MUST INCLUDE SPECIFIC TECHNICAL SPECS OR FEATURES FROM THE FACT-SHEET. NO GENERIC FILLERS.**\n"
     "   - **Instagram (Value + Vibe):** Focus on a 'Did you know?' hook followed by 3 fast value points. Use emojis strategically (max 5). Conclude with 3-5 relevant hashtags.\n"
     "3. **EMAIL (B2B Outreach):** (MANDATORY FIELD) Keep it under 150 words. Focus on one outcome. Single CTA. MANDATORY: Include a professional salutation (e.g., 'Dear [Name/Decision Maker],') and a strategic sign-off.\n\n"
 
