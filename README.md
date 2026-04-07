@@ -11,6 +11,11 @@ The **Autonomous Content Factory** is an AI-driven multi-agent assembly line tha
 
 This approach ensures surgical accuracy while providing a premium, real-time observability dashboard where users can watch agents "think" and "type" as they collaborate via Server-Sent Events (SSE).
 
+## Live Demo
+- [Website](https://automatic-content-generation.vercel.app/)
+- [Video Demo](https://drive.google.com/file/d/1hjyV2mvw-qzShWtfn_ljlJ1jeUzYmxgX/view?usp=sharing)
+- [Document used in Video Demo](https://cagjjrcnfsadwzdatxrh.supabase.co/storage/v1/object/public/campaign_documents/CAM-T20JT5U_5.MeetingIntelligenceHub.pdf)
+
 ## 🛠️ Tech Stack
 - **Programming Languages:** Python 3.10+, TypeScript (React)
 - **Backend:** FastAPI, LangGraph (Agentic Orchestration), LangChain
@@ -94,9 +99,3 @@ npm run dev
 ```
 
 ---
-
-## 🎨 UI & UX Design Goals
-- **Total Observability:** The user "sees" the AI working through "Thinking" and "Typing" animations, reducing the "Black Box" feel of LLMs.
-- **Surgical Redrafting:** Targeted regeneration allows for perfect branding without losing the entire campaign draft.
-- **Factual Grounding:** Every asset is explicitly cross-referenced against the extracted Fact-Sheet for absolute accuracy.
-
