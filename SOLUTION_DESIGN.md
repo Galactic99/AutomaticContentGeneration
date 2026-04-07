@@ -142,7 +142,7 @@ Autonomous Content Factory addresses this by transforming one document into a co
 | AI returns malformed JSON | Pydantic validation error | Caught by the node; reports error to logs and triggers a retry. |
 | Gemini API 429 (Quota) | Exception text check | Surfaced to UI as "API key exhausted, try again later." |
 | Campaign missing in DB | 404 from Supabase | Frontend displays "Campaign context not found." |
-| File size > 50 MB | Frontend validation | Blocked before upload to preserve bandwidth. |
+| File size > 25 MB | Frontend validation | Blocked before upload to preserve bandwidth. |
 | Unlimited Revision Loops | `loop_count` check | Halted after 3 iterations to prevent token runaway. |
 | Partial SSE Chunks | Stream framing logic | Frontend buffers and splits chunks by double newline to avoid UI flickering. |
 
