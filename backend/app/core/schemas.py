@@ -48,7 +48,7 @@ class FactSheet(BaseModel):
 
 class EmailDraft(BaseModel):
     subject: str = Field(..., description="Short, punchy B2B outreach subject line.")
-    body: str = Field(..., description="Under 150-word curiosity-driven email body.")
+    body: str = Field(default="", description="Under 150-word curiosity-driven email body.")
 
 class CampaignDrafts(BaseModel):
     """Structured AI-generated marketing content."""
