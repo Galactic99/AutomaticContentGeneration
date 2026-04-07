@@ -17,7 +17,7 @@ def should_continue(state: CampaignState):
     if state.get("is_approved"):
         return END
     
-    if int(state.get("loop_count", 0)) >= 5:
+    if int(state.get("loop_count", 0)) >= 3:
         return END
         
     return "copywriter"
