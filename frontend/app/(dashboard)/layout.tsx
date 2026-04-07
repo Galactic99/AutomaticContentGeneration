@@ -50,9 +50,9 @@ export default async function DashboardLayout({
                     <div className="px-4 py-3 border-b border-zinc-50 mb-1">
                       <p className="text-xs font-bold truncate text-zinc-900">{user.email}</p>
                     </div>
-                    <Link href="/settings" className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-[13px] font-bold text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-900">
-                      Account Settings
-                    </Link>
+                    <div className="px-4 py-2.5 rounded-2xl text-[13px] font-bold text-zinc-300 cursor-not-allowed">
+                      Settings (Coming Soon)
+                    </div>
                     <form action="/signout" method="post">
                       <button className="w-full text-left px-4 py-2.5 rounded-2xl text-[13px] font-bold text-red-500 transition-colors hover:bg-red-50">
                         Sign Out

@@ -103,7 +103,10 @@ async def research_node(state: CampaignState) -> dict:
 
 async def copywriter_node(state: CampaignState) -> dict:
     campaign_id = state["campaign_id"]
-    fact_sheet = state["fact_sheet"]
+    fact_sheet = state.get("fact_sheet")
+    if not fact_sheet:
+         return {"logs": [AgentLogEntry(agent_id="copywriter", agent_name="Copywriter", message="Fact-Sheet missing. Research aborted.", status="error")]}
+    
     notes = state.get("correction_notes", "")
     
     target_platform = None
@@ -130,6 +133,7 @@ async def copywriter_node(state: CampaignState) -> dict:
     try:
         new_obj = await chain.ainvoke({"facts_json": facts_json, "notes": notes})
         await typewriter_task
+        if not new_obj: raise ValueError("AI Model failed to generate drafts.")
         new_drafts = new_obj.model_dump()
         final_drafts = state.get("drafts", {}).copy()
 

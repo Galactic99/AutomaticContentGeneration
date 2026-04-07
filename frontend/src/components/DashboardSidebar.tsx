@@ -96,14 +96,14 @@ export function DashboardSidebar({ userEmail }: { userEmail: string | undefined 
         </div>
       </nav>
 
-      <div className="p-4 border-t border-zinc-100">
-         <Link href="/pricing" className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-gradient-to-br from-zinc-50 to-white border border-zinc-200 shadow-sm transition-all hover:border-zinc-300">
-            <div className="text-lg">⭐</div>
+      <div className="p-4 border-t border-zinc-100 opacity-60">
+         <div className="flex items-center gap-3 px-4 py-3">
+            <div className="text-lg">⚙️</div>
             <div className="flex flex-col">
-              <span className="text-xs font-bold">Upgrade Plan</span>
-              <span className="text-[10px] text-zinc-400 font-medium">Unlock full agent power</span>
+              <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Enterprise Mode</span>
+              <span className="text-[10px] text-zinc-400 font-medium">Autonomous Factory Active</span>
             </div>
-         </Link>
+         </div>
       </div>
     </aside>
   );

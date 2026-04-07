@@ -169,10 +169,12 @@ async def event_generator(campaign_id: str):
     has_error = False
     error_message = "Pipeline verification failed: The analysis was incomplete."
     
-    if "logs" in final_full_state:
-        for log in final_full_state["logs"]:
+    if final_full_state and "logs" in final_full_state:
+        # Cast to list to avoid None results if a node failed oddly
+        logs = final_full_state.get("logs") or []
+        for log in logs:
             status = getattr(log, "status", "") if not isinstance(log, dict) else log.get("status", "")
-            if "error" in str(status).lower():
+            if status and "error" in str(status).lower():
                 has_error = True
                 error_message = getattr(log, "message", "Unknown node error") if not isinstance(log, dict) else log.get("message", "Unknown node error")
                 break
