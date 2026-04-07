@@ -19,7 +19,7 @@ def create_app() -> FastAPI:
     # CORS Middleware: Allowing Frontend (Next.js) to communicate with Backend (FastAPI)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000"],  # Next.js Default
+        allow_origins=["*"],  # Permissive CORS for cross-domain deployment
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

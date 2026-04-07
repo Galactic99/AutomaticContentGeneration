@@ -2,24 +2,18 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { 
   ArrowRight, 
   Check, 
-  Play, 
+  Send, 
   Menu, 
   X, 
-  ChevronRight,
-  Send,
   Sparkles,
   BarChart2,
-  Users,
-  Lock,
-  MessageCircle,
-  Twitter,
-  Youtube,
-  Instagram,
-  Linkedin
+  Zap,
+  FileText,
+  Code
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -28,15 +22,126 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+const MOCKUP_IMAGES = [
+  "/mockup_screen.png",
+  "/gmail_mockup.png",
+  "/insta_mockup.png"
+];
+
+function ScanningMockup() {
+  const [particles, setParticles] = useState<any[]>([]);
+
+  useEffect(() => {
+    setParticles(Array(10).fill(0).map(() => ({
+      left: `${Math.random() * 100}%`,
+      top: `${Math.random() * 100}%`,
+      delay: Math.random() * 2,
+      duration: Math.random() * 3 + 2
+    })));
+  }, []);
+
+  return (
+    <div className="relative aspect-[16/10] bg-zinc-950 rounded-[3rem] overflow-hidden shadow-2xl p-8 flex items-center justify-center border border-zinc-800">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,#1e293b_0%,transparent_50%)] opacity-30" />
+      
+      {/* --- SCANNED FILE --- */}
+      <motion.div 
+        initial={{ opacity: 0, x: -50 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 1 }}
+        className="relative z-10 w-44 h-56 bg-zinc-900 border border-zinc-800 rounded-2xl p-6 flex flex-col gap-4 shadow-2xl"
+      >
+        <div className="h-2 w-12 bg-blue-500/40 rounded" />
+        <div className="space-y-3">
+          <div className="h-1.5 w-full bg-zinc-800 rounded" />
+          <div className="h-1.5 w-3/4 bg-zinc-800 rounded" />
+          <div className="h-1.5 w-full bg-zinc-800 rounded" />
+          <div className="h-1.5 w-5/6 bg-zinc-800 rounded" />
+        </div>
+        
+        {/* Scanning Bar Animation */}
+        <motion.div 
+          animate={{ top: ["0%", "100%", "0%"] }}
+          transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+          className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-blue-400 to-transparent shadow-[0_0_15px_rgba(59,130,246,0.6)] z-20"
+        />
+      </motion.div>
+
+      {/* --- CONVERSION ARROW --- */}
+      <motion.div 
+        animate={{ opacity: [0.2, 0.5, 0.2] }}
+        transition={{ duration: 3, repeat: Infinity }}
+        className="mx-8 text-zinc-800"
+      >
+        <ArrowRight size={32} />
+      </motion.div>
+
+      {/* --- JSON OUTPUT --- */}
+      <motion.div 
+        initial={{ opacity: 0, x: 50 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 1, delay: 0.5 }}
+        className="relative z-10 w-56 h-48 bg-blue-950/20 border border-blue-500/20 rounded-2xl p-6 flex flex-col gap-4 shadow-inner"
+      >
+        <div className="flex justify-between items-center">
+            <span className="text-[10px] font-mono text-blue-500">facts.json</span>
+            <div className="flex gap-1">
+                <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                <div className="h-1.5 w-1.5 rounded-full bg-blue-500/30" />
+                <div className="h-1.5 w-1.5 rounded-full bg-blue-500/30" />
+            </div>
+        </div>
+        <div className="space-y-3 font-mono text-[9px] text-blue-300">
+          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1 }}>{'{'}</motion.p>
+          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.2 }} className="pl-3">"status": <span className="text-emerald-400">"verified"</span>,</motion.p>
+          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.4 }} className="pl-3">"grounding": <span className="text-emerald-400">0.99</span></motion.p>
+          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.6 }}>{'}'}</motion.p>
+        </div>
+      </motion.div>
+
+      {/* Background Particles (Fixed Hydration Issue) */}
+      {particles.map((p, i) => (
+        <motion.div 
+          key={i}
+          animate={{ 
+            y: [-20, 20], 
+            opacity: [0, 1, 0],
+            scale: [0.5, 1, 0.5]
+          }}
+          transition={{ 
+            duration: p.duration, 
+            repeat: Infinity, 
+            delay: p.delay 
+          }}
+          className="absolute h-1 w-1 rounded-full bg-blue-500/20"
+          style={{ 
+            left: p.left, 
+            top: p.top 
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function LandingPage() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { scrollYProgress } = useScroll();
+  const [mockupIndex, setMockupIndex] = useState(0);
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 40);
     window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+    
+    // Looping animation for deployment mockups
+    const timer = setInterval(() => {
+      setMockupIndex((prev) => (prev + 1) % MOCKUP_IMAGES.length);
+    }, 4000);
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      clearInterval(timer);
+    };
   }, []);
 
   return (
@@ -51,22 +156,21 @@ export default function LandingPage() {
           <div className="h-8 w-8 bg-zinc-900 rounded-lg flex items-center justify-center">
             <Send className="text-white h-4 w-4 transform -rotate-12" />
           </div>
-          <span className="font-bold text-xl tracking-tight">ContentFactory</span>
+          <span className="font-bold text-xl tracking-tight italic font-playfair">ContentFactory</span>
         </Link>
 
         {/* Desktop Links */}
         <div className="hidden lg:flex items-center gap-10">
-          {['Features', 'Marketplace', 'Resources', 'Pricing'].map((item) => (
-            <a key={item} href={`#${item.toLowerCase()}`} className="text-sm font-medium text-zinc-600 hover:text-zinc-900 transition-colors">
+          {['Workflow', 'Agents', 'Docs'].map((item) => (
+            <a key={item} href={`#${item.toLowerCase()}`} className="text-[11px] uppercase tracking-widest font-bold text-zinc-400 hover:text-zinc-900 transition-colors">
               {item}
             </a>
           ))}
         </div>
 
         <div className="flex items-center gap-4">
-          <Link href="/login" className="hidden sm:block text-sm font-semibold text-zinc-600 px-4">Log in</Link>
-          <Link href="/login" className="px-6 py-2.5 rounded-full bg-zinc-900 text-white text-sm font-bold transition-all hover:bg-zinc-800 active:scale-95 shadow-lg shadow-zinc-200">
-            Start free trial
+          <Link href="/login" className="px-8 py-3 rounded-2xl bg-zinc-900 text-white text-[13px] font-bold transition-all hover:bg-zinc-800 active:scale-95 shadow-xl shadow-zinc-200">
+            Enter Factory →
           </Link>
           <button className="lg:hidden p-2" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
             {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
@@ -75,277 +179,148 @@ export default function LandingPage() {
       </nav>
 
       {/* --- HERO SECTION --- */}
-      <section className="relative pt-44 pb-24 text-center px-6 sm:px-12 overflow-hidden">
-        {/* Soft Background Clouds/Gradients */}
-        <div className="absolute top-[-10%] left-[-5%] w-[40%] h-[40%] bg-blue-50/50 blur-[100px] rounded-full -z-10" />
-        <div className="absolute top-[5%] right-[-5%] w-[35%] h-[35%] bg-orange-50/50 blur-[100px] rounded-full -z-10" />
-
-        <div className="max-w-4xl mx-auto space-y-8 z-10 relative">
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex justify-center"
-          >
-            <div className="px-4 py-1 rounded-full bg-zinc-100 border border-zinc-200/50 text-[12px] font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Revolutionizing Content Ops
-            </div>
-          </motion.div>
-
+      <section className="relative min-h-screen flex items-center justify-center text-center px-6 sm:px-12 overflow-hidden bg-white">
+        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_0%,#eff6ff_0%,transparent_50%)]" />
+        
+        <div className="max-w-5xl mx-auto space-y-12 z-10 relative">
           <motion.h1 
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="text-5xl sm:text-7xl font-bold tracking-tight text-zinc-900 leading-[1.05]"
+            transition={{ delay: 0.1, duration: 0.8 }}
+            className="text-6xl sm:text-[9rem] font-bold tracking-tight text-zinc-900 leading-[0.8]"
           >
-            Run your content <br /> factory like a pro
+            Autonomous <br /> <span className="italic text-zinc-300 font-playfair">Content</span> Factory
           </motion.h1>
 
           <motion.p 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="text-xl text-zinc-500 max-w-2xl mx-auto leading-relaxed"
+            transition={{ delay: 0.2, duration: 0.8 }}
+            className="text-xl sm:text-2xl text-zinc-400 max-w-3xl mx-auto leading-relaxed font-light"
           >
-            Manage technical sources, orchestrate agents, and deliver coordinated campaigns. The all-in-one assembly line for serious creators.
+            Orchestrate coordinated campaigns with a multi-agent assembly line. Our platform parses technical documentation, identifies core facts, streams agent thought processes in real time.
           </motion.p>
 
           <motion.div 
              initial={{ opacity: 0, y: 20 }}
              animate={{ opacity: 1, y: 0 }}
-             transition={{ delay: 0.3 }}
-             className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4"
+             transition={{ delay: 0.3, duration: 0.8 }}
+             className="flex flex-col sm:flex-row items-center justify-center gap-6 pt-12"
           >
-             <Link href="/login" className="px-10 py-4 rounded-xl bg-zinc-900 text-white font-bold shadow-2xl shadow-zinc-300 hover:bg-zinc-800 transition-all flex items-center gap-2">
-                Get started free <ArrowRight size={18} />
+             <Link href="/login" className="group px-14 py-6 rounded-[2rem] bg-zinc-900 text-white font-bold shadow-2xl shadow-zinc-200 hover:bg-zinc-800 transition-all flex items-center gap-3 text-lg">
+                Enter Workshop <ArrowRight size={22} className="group-hover:translate-x-1 transition-transform" />
              </Link>
-             <button className="px-10 py-4 rounded-xl bg-white border border-zinc-200 text-zinc-600 font-bold hover:bg-zinc-50 transition-all flex items-center gap-2">
-                <Play size={16} fill="currentColor" /> Watch demo
-             </button>
           </motion.div>
         </div>
-
-        {/* Main Product Showcase Mockup */}
-        <motion.div 
-          initial={{ opacity: 0, y: 60 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5, duration: 1 }}
-          className="mt-20 max-w-6xl mx-auto p-4 sm:p-8 rounded-[3rem] bg-white shadow-[0_50px_150px_-50px_rgba(0,0,0,0.1)] border border-zinc-100 relative overflow-hidden"
-        >
-          <div className="absolute top-0 left-0 right-0 h-1bg-gradient-to-r from-blue-100 via-orange-50 to-emerald-50 opacity-50" />
-          <img 
-            src="https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&q=80&w=2426" 
-            alt="Dashboard Preview" 
-            className="w-full rounded-[2rem] border border-zinc-100 shadow-sm"
-          />
-        </motion.div>
       </section>
 
-      {/* --- LOGO STRIP (DESATURATED) --- */}
-      <div className="py-20 border-y border-zinc-100 overflow-hidden">
-        <p className="text-center text-[10px] uppercase font-bold text-zinc-400 tracking-[0.3em] mb-12">Trusted by 5,000+ top engineering teams</p>
-        <div className="flex flex-wrap items-center justify-center gap-16 sm:gap-24 px-8 opacity-40 grayscale">
-          <span className="font-bold text-2xl tracking-tighter">Vercel</span>
-          <span className="font-bold text-2xl tracking-tighter italic">Supabase</span>
-          <span className="font-bold text-2xl tracking-tighter">Notion</span>
-          <span className="font-bold text-2xl tracking-tighter">Linear</span>
-          <span className="font-bold text-2xl tracking-tighter italic">Github</span>
-        </div>
-      </div>
-
-      {/* --- FEATURE SECTION 1: WORK FROM ANYWHERE --- */}
-      <section className="py-32 px-6 sm:px-12 max-w-7xl mx-auto space-y-32">
-        <div className="flex flex-col gap-12 text-center md:text-left md:flex-row md:items-center">
-          <div className="flex-1 space-y-8">
-            <h2 className="text-4xl sm:text-5xl font-bold tracking-tight text-zinc-900">Work from anywhere, stay in sync</h2>
-            <p className="text-lg text-zinc-500 leading-relaxed max-w-xl">
-              ContentFactory keeps all your agents and campaigns in one unified canvas. Access your assembly line on desktop or mobile with instantaneous real-time sync.
-            </p>
-            <div className="flex gap-4">
-               <button className="px-6 py-2 rounded-full bg-zinc-900 text-white text-sm font-bold">App Store</button>
-               <button className="px-6 py-2 rounded-full border border-zinc-200 text-zinc-600 text-sm font-bold">Play Store</button>
-            </div>
+      {/* --- FEATURES --- */}
+      <section id="workflow" className="py-56 px-6 sm:px-12 max-w-7xl mx-auto space-y-72 bg-[#FDFCF9]">
+        
+        {/* PILLAR 1: RESEARCH (SVG ANIMATION) */}
+        <div className="flex flex-col gap-20 lg:flex-row lg:items-center">
+          <div className="flex-1 space-y-12">
+             <div className="h-16 w-16 rounded-3xl bg-zinc-900 text-white flex items-center justify-center shadow-2xl">
+                <BarChart2 size={32} />
+             </div>
+             <div className="space-y-8">
+                <h2 className="text-5xl sm:text-[5rem] leading-[0.9] font-bold tracking-tight text-zinc-900">Grounded <br/><span className="text-zinc-300 italic font-playfair">Verification</span></h2>
+                <p className="text-xl text-zinc-500 leading-relaxed max-w-xl">
+                  Process source materials to isolate technical facts. Our Researcher node removes marketing hype, identifies specific details, verifies all data points against original text.
+                </p>
+             </div>
+             <div className="flex flex-wrap gap-x-8 gap-y-4 text-xs font-bold uppercase tracking-widest text-zinc-400">
+                <div className="flex items-center gap-2 text-zinc-900">PDF Audit</div>
+                <div className="flex items-center gap-2 text-zinc-900">Fact Shield</div>
+                <div className="flex items-center gap-2 text-zinc-900">Doc Parsing</div>
+             </div>
           </div>
-          <div className="flex-1 relative">
-             <div className="aspect-[4/3] rounded-[3rem] overflow-hidden shadow-2xl ring-1 ring-zinc-100">
-                <img 
-                  src="https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?auto=format&fit=crop&q=80&w=2670" 
-                  alt="Mobile Experience" 
-                  className="w-full h-full object-cover"
-                />
+          <div className="flex-1">
+             <ScanningMockup />
+          </div>
+        </div>
+
+        {/* PILLAR 2: OBSERVABILITY (CHATLOG) */}
+        <div className="flex flex-col gap-20 lg:flex-row-reverse lg:items-center">
+          <div className="flex-1 space-y-12">
+             <div className="h-16 w-16 rounded-3xl bg-zinc-900 text-white flex items-center justify-center shadow-2xl lg:ml-auto">
+                <Sparkles size={32} />
+             </div>
+             <div className="space-y-8 lg:text-right">
+                <h2 className="text-5xl sm:text-[5rem] leading-[0.9] font-bold tracking-tight text-zinc-900">Watch <br/><span className="text-zinc-300 italic font-playfair">Live</span> Audits</h2>
+                <p className="text-xl text-zinc-500 leading-relaxed max-w-xl lg:ml-auto font-light">
+                   Total observability for the assembly line. We stream agent thought processes, typing cycles, status changes as they occur via persistent live stream.
+                </p>
+             </div>
+             <div className="flex flex-wrap gap-x-8 gap-y-4 text-xs font-bold uppercase tracking-widest text-zinc-400 lg:justify-end">
+                <div className="flex items-center gap-2 text-zinc-900">SSE Feed</div>
+                <div className="flex items-center gap-2 text-zinc-900">Token Stream</div>
+                <div className="flex items-center gap-2 text-zinc-900">Live Audit</div>
+             </div>
+          </div>
+          <div className="flex-1 text-center">
+             <img src="/chatlog.png" alt="Live Audit Feed" className="w-full h-auto rounded-3xl" />
+          </div>
+        </div>
+
+        {/* PILLAR 3: MULTI-CHANNEL (LOOPING MOCKUPS) */}
+        <div className="flex flex-col gap-20 lg:flex-row lg:items-center">
+          <div className="flex-1 space-y-12">
+             <div className="h-16 w-16 rounded-3xl bg-zinc-900 text-white flex items-center justify-center shadow-2xl">
+                <Zap size={32} />
+             </div>
+             <div className="space-y-8">
+                <h2 className="text-5xl sm:text-[5rem] leading-[0.9] font-bold tracking-tight text-zinc-900">Instant <br/><span className="text-zinc-300 italic font-playfair">Production</span></h2>
+                <p className="text-xl text-zinc-500 leading-relaxed max-w-xl">
+                  Generate blogs, social threads, email outreach from a single fact sheet. Every asset is cross-checked for brand voice, factual consistency, logical coherence.
+                </p>
+             </div>
+             <div className="flex flex-wrap gap-x-8 gap-y-4 text-xs font-bold uppercase tracking-widest text-zinc-400">
+                <div className="flex items-center gap-2 text-zinc-900">Blog System</div>
+                <div className="flex items-center gap-2 text-zinc-900">Social Engine</div>
+                <div className="flex items-center gap-2 text-zinc-900">Cold Outreach</div>
+             </div>
+          </div>
+          <div className="flex-1 px-4 sm:px-0">
+             <div className="relative aspect-[3/4] sm:aspect-[4/5] flex items-center justify-center">
+                <AnimatePresence mode="wait">
+                   <motion.img
+                      key={mockupIndex}
+                      src={MOCKUP_IMAGES[mockupIndex]}
+                      alt="Deployment Preview"
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 1.02 }}
+                      transition={{ duration: 0.8, ease: "easeInOut" }}
+                      className="absolute inset-0 w-full h-full object-contain rounded-3xl"
+                   />
+                </AnimatePresence>
              </div>
           </div>
         </div>
-
-        {/* --- FEATURE SECTION 2: PRO-LEVEL MANAGEMENT (Z-LAYOUT) --- */}
-        <div className="grid md:grid-cols-2 gap-24 items-center">
-           <div className="order-2 md:order-1 relative">
-              <div className="aspect-square bg-blue-100/50 rounded-[4rem] p-12 flex items-center justify-center overflow-hidden">
-                 <div className="w-full h-full bg-white rounded-3xl shadow-2xl p-6 space-y-6">
-                    <div className="flex items-center justify-between"><div className="w-20 h-4 bg-zinc-50 rounded" /><Check className="text-emerald-500" /></div>
-                    <div className="space-y-3">
-                       {Array(4).fill(0).map((_, i) => (
-                         <div key={i} className="h-12 bg-zinc-50/50 rounded-xl border border-zinc-100 flex items-center px-4 gap-3">
-                            <div className="h-6 w-6 rounded bg-zinc-100" />
-                            <div className="h-2 flex-1 bg-zinc-100 rounded" />
-                         </div>
-                       ))}
-                    </div>
-                 </div>
-              </div>
-           </div>
-           <div className="order-1 md:order-2 space-y-8">
-              <div className="h-1 w-12 bg-indigo-500 rounded-full" />
-              <h2 className="text-4xl sm:text-5xl font-bold tracking-tight">Keep every project moving forward</h2>
-              <p className="text-lg text-zinc-500 leading-relaxed">
-                Automatic status tracking and agent updates ensure everyone knows exactly what's ready for review and what's in the hopper.
-              </p>
-              <Link href="/login" className="inline-flex items-center gap-2 font-bold text-zinc-900 border-b-2 border-zinc-900 pb-1">Learn more <ChevronRight size={16} /></Link>
-           </div>
-        </div>
       </section>
 
-      {/* --- AGENT FEATURES (GRID) --- */}
-      <section className="bg-zinc-50 py-32">
-         <div className="px-6 sm:px-12 max-w-7xl mx-auto space-y-24">
-            <div className="text-center space-y-6">
-               <h2 className="text-4xl font-bold tracking-tight">Built for agencies, <br/>powered by AI simplicity</h2>
-            </div>
-
-            <div className="grid sm:grid-cols-2 gap-8">
-               <div className="bg-white p-12 rounded-[3.5rem] shadow-sm ring-1 ring-zinc-200/50 space-y-8">
-                  <div className="flex gap-2">
-                     {['#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'].map(color => (
-                        <div key={color} style={{ backgroundColor: color }} className="h-8 w-8 rounded-full border-2 border-white shadow-sm" />
-                     ))}
-                  </div>
-                  <h3 className="text-2xl font-bold">Great for teams and solo entrepreneurs</h3>
-                  <p className="text-zinc-500 text-sm leading-relaxed">Scale from a one-person shop to a global agency with flexible seats and permission controls built directly into the assembly line.</p>
-               </div>
-               <div className="bg-white p-12 rounded-[3.5rem] shadow-sm ring-1 ring-zinc-200/50 space-y-8">
-                  <div className="grid grid-cols-5 gap-3">
-                     {[Lock, Sparkles, BarChart2, MessageCircle, Twitter].map((Icon, i) => (
-                        <div key={i} className="h-10 w-10 flex items-center justify-center bg-zinc-50 rounded-xl"><Icon size={20} className="text-zinc-400" /></div>
-                     ))}
-                  </div>
-                  <h3 className="text-2xl font-bold">Integrate with all the platforms you love</h3>
-                  <p className="text-zinc-500 text-sm leading-relaxed">Connect X, LinkedIn, Instagram, and Gmail directly. Publish scheduled campaigns with a single click after your agents finish their audit.</p>
-               </div>
-            </div>
-         </div>
-      </section>
-
-      {/* --- TESTIMONIAL --- */}
-      <section className="py-32 bg-white px-6 sm:px-12 text-center">
-         <div className="max-w-4xl mx-auto space-y-12">
-            <h2 className="text-3xl sm:text-5xl font-bold tracking-tight italic">
-              "ContentFactory is by far the best campaign tool I have ever used."
-            </h2>
-            <div className="flex flex-col items-center gap-4">
-               <div className="h-16 w-16 rounded-full overflow-hidden ring-4 ring-zinc-50">
-                  <img src="https://i.pravatar.cc/150?u=4" alt="Testimonial" />
-               </div>
-               <div>
-                  <p className="font-bold">Alex Rivera</p>
-                  <p className="text-sm text-zinc-400">Founder @ TechStream</p>
-               </div>
-            </div>
-         </div>
-      </section>
-
-      {/* --- PRICING --- */}
-      <section id="pricing" className="py-32 px-6 sm:px-12 bg-zinc-50">
-         <div className="max-w-7xl mx-auto space-y-24">
-            <div className="text-center space-y-6">
-               <h2 className="text-4xl font-bold tracking-tight">Simple plans for serious work</h2>
-            </div>
-            <div className="grid md:grid-cols-3 gap-8">
-               {[
-                 { name: "Free", price: "0", features: ["1 Campaign / mo", "Basic AI Access", "Local Preview", "Community Support"] },
-                 { name: "Starter", price: "29", features: ["10 Campaigns / mo", "Custom Personas", "Email Integration", "Priority Support"], popular: true },
-                 { name: "Business", price: "99", features: ["Unlimited Campaigns", "Full Agent Tuning", "Advanced SEO", "Dedicated Manager"] }
-               ].map((plan, i) => (
-                  <div key={i} className={cn(
-                    "relative p-10 rounded-[2.5rem] bg-white shadow-sm ring-1 ring-zinc-200 transition-all hover:shadow-xl",
-                    plan.popular && "ring-zinc-900 border-zinc-900 shadow-xl scale-105 z-10"
-                  )}>
-                     {plan.popular && <span className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-4 py-1 rounded-full bg-emerald-500 text-white text-[10px] font-bold uppercase tracking-widest">Most Popular</span>}
-                     <h3 className="text-sm font-bold uppercase text-zinc-400 tracking-widest mb-4">{plan.name}</h3>
-                     <div className="flex items-baseline gap-1 mb-8">
-                        <span className="text-4xl font-bold">${plan.price}</span>
-                        <span className="text-zinc-400 text-sm">/mo</span>
-                     </div>
-                     <ul className="space-y-4 mb-10 text-sm text-zinc-500">
-                        {plan.features.map(f => (
-                           <li key={f} className="flex items-center gap-2"><Check size={14} className="text-emerald-500" /> {f}</li>
-                        ))}
-                     </ul>
-                     <button className={cn(
-                        "w-full py-4 rounded-xl font-bold transition-all active:scale-95",
-                        plan.popular ? "bg-zinc-900 text-white shadow-lg shadow-zinc-200" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
-                     )}>Choose Plan</button>
-                  </div>
-               ))}
-            </div>
-         </div>
-      </section>
-
-      {/* --- BLOG / IDEAS --- */}
-      <section className="py-32 px-6 sm:px-12 bg-white">
-         <div className="max-w-7xl mx-auto space-y-16">
-            <h2 className="text-4xl font-bold tracking-tight text-center">Ideas to level up your campaign game</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-               <div className="space-y-6 group cursor-pointer">
-                  <div className="aspect-[16/9] rounded-[2rem] overflow-hidden shadow-lg"><img src="https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&q=80&w=2670" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Blog" /></div>
-                  <div className="space-y-2">
-                     <span className="text-xs font-bold text-orange-500 uppercase tracking-widest">Tutorials</span>
-                     <h3 className="text-2xl font-bold">How to start a 100% automated agency in 30 days</h3>
-                  </div>
-               </div>
-               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {[
-                    "Mastering the Agent Prompts",
-                    "Scaling Fact-Integrity",
-                    "The Future of Technical Writing",
-                    "SEO in the Era of AI"
-                  ].map((title, i) => (
-                    <div key={i} className="aspect-square bg-zinc-50 rounded-3xl p-8 flex flex-col justify-end gap-3 group cursor-pointer">
-                       <h4 className="text-lg font-bold group-hover:text-blue-600 transition-colors leading-tight">{title}</h4>
-                       <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Read Article</span>
-                    </div>
-                  ))}
-               </div>
-            </div>
-         </div>
-      </section>
-
-      {/* --- FOOTER CTA --- */}
-      <section className="py-32 px-6 sm:px-12 bg-blue-50/50">
-         <div className="max-w-4xl mx-auto text-center space-y-12">
-            <h2 className="text-4xl sm:text-6xl font-bold tracking-tight">Ready to get started?</h2>
-            <Link href="/login" className="inline-block px-12 py-5 rounded-xl bg-zinc-900 text-white font-bold shadow-2xl transition-all hover:-translate-y-1 active:scale-95">Start free trial today</Link>
-         </div>
-      </section>
-
-      <footer className="py-24 px-6 sm:px-12 border-t border-zinc-100 bg-white">
-        <div className="max-w-7xl mx-auto grid grid-cols-2 lg:grid-cols-4 gap-16">
-          <div className="col-span-2 lg:col-span-1 space-y-8">
+      {/* --- FOOTER --- */}
+      <footer className="py-40 px-6 sm:px-12 border-t border-zinc-100 bg-white">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-24 items-start">
+          <div className="space-y-10">
             <Link href="/" className="flex items-center gap-2">
               <div className="h-8 w-8 bg-zinc-900 rounded-lg flex items-center justify-center"><Send className="text-white h-4 w-4 transform -rotate-12" /></div>
-              <span className="font-bold text-xl tracking-tight">ContentFactory</span>
+              <span className="font-bold text-xl tracking-tight italic font-playfair">ContentFactory</span>
             </Link>
-            <p className="text-zinc-500 text-sm leading-relaxed max-w-xs">Built for technical marketers and automation-first agencies worldwide.</p>
-            <div className="flex gap-4 text-zinc-400">
-               <Twitter size={20} /><Youtube size={20} /><Instagram size={20} /><Linkedin size={20} />
-            </div>
+            <p className="text-zinc-400 text-sm leading-relaxed max-w-sm font-light">Experimental assembly line for Multi-Agent Orchestration, LangGraph, real-time AI Observability. Open for research purposes.</p>
           </div>
-          <div><h4 className="font-bold text-sm uppercase tracking-widest mb-8">Platform</h4><ul className="space-y-4 text-sm text-zinc-500"><li>Features</li><li>Agents</li><li>Resources</li><li>Security</li></ul></div>
-          <div><h4 className="font-bold text-sm uppercase tracking-widest mb-8">Resources</h4><ul className="space-y-4 text-sm text-zinc-500"><li>Blog</li><li>Documentation</li><li>Case Studies</li><li>API</li></ul></div>
-          <div><h4 className="font-bold text-sm uppercase tracking-widest mb-8">Company</h4><ul className="space-y-4 text-sm text-zinc-500"><li>About</li><li>Contact</li><li>Privacy</li><li>Legal</li></ul></div>
-        </div>
-        <div className="max-w-7xl mx-auto pt-24 flex justify-between items-center opacity-30">
-          <span className="text-xs font-medium">© 2026 ContentFactory AI</span>
-          <span className="text-xs font-medium">Built by creators for creators</span>
+          
+          <div className="flex flex-wrap gap-20 justify-start md:justify-end">
+             <div>
+                <h4 className="text-[10px] uppercase font-bold text-zinc-300 tracking-[0.2em] mb-8">Node Tech</h4>
+                <ul className="space-y-4 text-[12px] font-bold text-zinc-600">
+                   <li><Link href="#" className="hover:text-blue-600 transition-colors">LangGraph</Link></li>
+                   <li><Link href="#" className="hover:text-blue-600 transition-colors">FastAPI</Link></li>
+                   <li><Link href="#" className="hover:text-blue-600 transition-colors">Next.js</Link></li>
+                </ul>
+             </div>
+          </div>
         </div>
       </footer>
     </div>

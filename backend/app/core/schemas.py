@@ -52,7 +52,8 @@ class EmailDraft(BaseModel):
 
 class CampaignDrafts(BaseModel):
     """Structured AI-generated marketing content."""
-    blog: str = Field(..., description="Full-length PAS-structured markdown blog post.")
+    blog_title: str = Field(..., description="A concise, punchy title for the blog post (max 10 words).")
+    blog: str = Field(..., description="Full-length PAS-structured markdown blog post (the body only).")
     linkedin_thread: Optional[List[str]] = Field(default_factory=list, description="Optional array of 3-5 social media posts.")
     instagram_post: Optional[str] = Field(None, description="Optional high-engagement Instagram caption with hashtags.")
     email: Optional[EmailDraft] = Field(None, description="Optional B2B outreach email draft.")

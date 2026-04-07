@@ -10,43 +10,25 @@ from app.agents.prompts import RESEARCHER_SYSTEM_PROMPT, COPYWRITER_SYSTEM_PROMP
 from app.services.stream_bus import get_queue
 
 def extract_text(content) -> str:
-    """Safely extracts a string from LangChain message content, which can be a list of parts."""
-    if isinstance(content, str):
-        return content
+    """Safely extracts a string from LangChain message content."""
+    if isinstance(content, str): return content
     if isinstance(content, list):
         return "".join([part.get("text", "") if isinstance(part, dict) else str(part) for part in content])
     return str(content)
 
-
 def _get_agent_display(node_name: str) -> str:
-    """Map node name to display name consistently with stream.py."""
-    return {
-        "researcher": "Researcher", 
-        "copywriter": "Copywriter", 
-        "editor": "Editor",
-        "system": "System"
-    }.get(node_name, node_name.capitalize())
-
+    return {"researcher": "Researcher", "copywriter": "Copywriter", "editor": "Editor", "system": "System"}.get(node_name, node_name.capitalize())
 
 def _clean_chunk(text: str) -> str:
-    """Strip JSON artifacts from a streamed chunk so it reads like plain English."""
+    """Strip JSON artifacts from a streamed chunk."""
     text = re.sub(r'[{}\[\]"]', '', text)
-    text = re.sub(
-        r'\b(fact_sheet|core_product_features|technical_specs|target_audience|'
-        r'brand_voice_directives|ambiguous_statements|drafts|blog|linkedin_thread|'
-        r'email|subject|body|campaign_id|value_proposition|source_quote|category|'
-        r'created_at|fact)\b', '', text
-    )
-    # Remove hanging colons or backslashes without adding spaces
+    text = re.sub(r'\b(fact_sheet|core_product_features|technical_specs|target_audience|brand_voice_directives|ambiguous_statements|drafts|blog|linkedin_thread|email|subject|body|campaign_id|value_proposition|source_quote|category|created_at|fact)\b', '', text)
     text = re.sub(r'[:\\/,]', '', text)
     return text
 
-
 async def _push_typing(campaign_id: str, agent_id: str, chunk_text: str):
-    """Push a typing chunk to the stream bus for the SSE endpoint to pick up."""
     cleaned = _clean_chunk(chunk_text)
-    if not cleaned:
-        return
+    if not cleaned: return
     q = get_queue(campaign_id)
     await q.put({
         "agent_id": agent_id,
@@ -56,23 +38,17 @@ async def _push_typing(campaign_id: str, agent_id: str, chunk_text: str):
         "type": "chunk",
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
+
 async def _push_typewriter_effect(campaign_id: str, agent_id: str, message: str):
-    """Simulates a typewriter effect by sending the message in small chunks."""
     chunk_size = 2
     for i in range(0, len(message), chunk_size):
         chunk = message[i:i+chunk_size]
         await _push_typing(campaign_id, agent_id, chunk)
         await asyncio.sleep(0.04)
-    # Signal that typing animation is done so frontend clears cursor while waiting
     q = get_queue(campaign_id)
-    await q.put({
-        "agent_id": agent_id,
-        "type": "cursor_off"
-    })
-
+    await q.put({"agent_id": agent_id, "type": "cursor_off"})
 
 async def _push_log(campaign_id: str, agent_id: str, message: str, status: str = "completed"):
-    """Push a discrete milestone log to the stream bus instantly."""
     q = get_queue(campaign_id)
     await q.put({
         "agent_id": agent_id,
@@ -82,237 +58,121 @@ async def _push_log(campaign_id: str, agent_id: str, message: str, status: str =
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
 
+def _is_api_exhausted(e: Exception) -> bool:
+    err_msg = str(e).lower()
+    return "quota" in err_msg or "rate limit" in err_msg or "429" in err_msg or "exhausted" in err_msg
+
+
 async def research_node(state: CampaignState) -> dict:
-    """
-    Lead Researcher Node: Extracts facts from the source document.
-    Uses structured output (no streaming available for structured calls).
-    """
     campaign_id = state["campaign_id"]
-    q = get_queue(campaign_id)
-
-    # Bypass if already researched (e.g. during a manual Refine loop)
     if state.get("fact_sheet"):
-        return {
-            "logs": [AgentLogEntry(agent_id="researcher", agent_name="Lead Researcher", message="Using existing Fact-Sheet for this revision.", status="completed")]
-        }
+        return {"logs": [AgentLogEntry(agent_id="researcher", agent_name="Researcher", message="Using existing Fact-Sheet.", status="completed")]}
 
-    # Context-aware thinking message
-    await _push_log(campaign_id, "researcher", "I'm on it. Analyzing source material to extract ground truths.")
-    
-    source_snippet = state["source_text"][:50].strip().replace("\n", " ") + "..."
-    thought_msg = f"Analyzing source material now: '{source_snippet}'"
-    
-    typewriter_task = asyncio.create_task(_push_typewriter_effect(campaign_id, "researcher", thought_msg))
-
-    model = get_gemini_model(temperature=0.0)
-    structured_model = model.with_structured_output(FactSheet)
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", RESEARCHER_SYSTEM_PROMPT),
-        ("human", "SOURCE DOCUMENT CONTENT:\n\n{text}")
-    ])
+    await _push_log(campaign_id, "researcher", "Analyzing source material...")
+    typewriter_task = asyncio.create_task(_push_typewriter_effect(campaign_id, "researcher", "Extracting ground truths..."))
 
     try:
+        model = get_gemini_model(temperature=0.0)
+        structured_model = model.with_structured_output(FactSheet)
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", RESEARCHER_SYSTEM_PROMPT),
+            ("human", "SOURCE DOCUMENT CONTENT:\n\n{text}")
+        ])
+
         source_text = state["source_text"]
         if source_text.startswith("[FILE_URL_REFERENCE]::"):
             parts = source_text.split("::")
             if len(parts) >= 3:
-                file_url = parts[1]
-                filename = parts[2]
                 from app.core.parser import ContentParser
+                source_text = await ContentParser.download_and_extract_text(parts[1], parts[2])
                 
-                # Download and extract the massive text natively from the cloud URL
-                source_text = await ContentParser.download_and_extract_text(file_url, filename)
-                
-        # Optimization: Cap extraction to 500k chars for high-fidelity research
-        # Avoids hitting TPM limits on free tier while still providing massive context.
-        if len(source_text) > 500000:
-            source_text = source_text[:500000] + "\n[TEXT TRUNCATED AT 500K CHARS FOR PROCESSING]"
+        if len(source_text) > 500000: source_text = source_text[:500000] + "\n[TRUNCATED]"
                 
         chain = prompt | structured_model
+        fact_sheet = await chain.ainvoke({"text": source_text})
+        await typewriter_task
         
-        # Retry logic for flaky structured outputs from preview models
-        fact_sheet = None
-        last_error = ""
-        for attempt in range(3):
-            try:
-                fact_sheet = await chain.ainvoke({"text": source_text})
-                if fact_sheet is not None:
-                    break
-                last_error = "Model returned None (failed to map to schema)."
-            except Exception as inner_e:
-                last_error = str(inner_e)
-            await asyncio.sleep(1)
-            
-        await typewriter_task # ensure animation finishes
-        
-        if fact_sheet is None:
-            raise ValueError(f"Failed to extract facts after 3 attempts. Last error: {last_error}")
-
-        # PUSH REAL-TIME MILESTONE
-        await _push_log(campaign_id, "researcher", "Done. Extracted core facts and passed them to the Copywriter.")
-
-        fact_sheet.campaign_id = state["campaign_id"]
-        specs = fact_sheet.technical_specs or []
-        msg = f"Fact-extraction complete: {len(fact_sheet.core_product_features)} features & {len(specs)} technical specs verified. Passing the source context to our Creative Copywriter."
-        status = "completed"
+        if fact_sheet is None: raise ValueError("Model returned None.")
+        await _push_log(campaign_id, "researcher", "Fact-extraction complete.")
+        return {"fact_sheet": fact_sheet, "logs": [AgentLogEntry(agent_id="researcher", agent_name="Researcher", message="Facts verified.", status="completed")], "loop_count": 0}
     except Exception as e:
         typewriter_task.cancel()
-        fact_sheet = None
-        # EXPLICIT LOGGING FOR DEBUGGING
-        print(f"!!! RESEARCHER NODE FAILED: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        msg = f"Research failed: {str(e)}"
-        status = "error"
-
-    return {
-        "fact_sheet": fact_sheet,
-        "logs": [
-            AgentLogEntry(agent_id="researcher", agent_name="Researcher", message=msg, status="completed")
-        ],
-        "loop_count": 0
-    }
+        msg = "Gemini API key exhausted, try again later." if _is_api_exhausted(e) else f"Research failed: {str(e)}"
+        return {"logs": [AgentLogEntry(agent_id="researcher", agent_name="Researcher", message=msg, status="error")]}
 
 
 async def copywriter_node(state: CampaignState) -> dict:
-    """
-    Creative Copywriter Node: Uses model.astream() for real-time token streaming.
-    """
     campaign_id = state["campaign_id"]
     fact_sheet = state["fact_sheet"]
-    model = get_gemini_model(temperature=0.7)
+    notes = state.get("correction_notes", "")
     
+    target_platform = None
+    if "[ONLY::" in notes:
+        match = re.search(r'\[ONLY::(\w+)\]', notes)
+        if match:
+            target_platform = match.group(1).lower()
+            notes = notes.replace(match.group(0), "").strip()
+
+    model = get_gemini_model(temperature=0.7)
     prompt = ChatPromptTemplate.from_messages([
         ("system", COPYWRITER_SYSTEM_PROMPT),
-        ("human", "SOURCE DATA FOR CAMPAIGN:\n\n{facts_json}\n\n{feedback_context}")
+        ("human", "SOURCE DATA:\n{facts_json}\n\nFEEDBACK:\n{notes}")
     ])
 
-    feedback_context = f"### PREVIOUS FEEDBACK (FIX THESE):\n{state['correction_notes']}" if state.get("correction_notes") else ""
-
-    # Handle fact_sheet being either a Pydantic model or a plain dict
-    if hasattr(fact_sheet, 'brand_voice_directives'):
-        voice_directives = ", ".join(fact_sheet.brand_voice_directives)
-        facts_json = fact_sheet.json()
-    else:
-        voice_directives = ", ".join(fact_sheet.get('brand_voice_directives', []))
-        facts_json = json.dumps(fact_sheet, default=str)
-
+    facts_json = fact_sheet.json() if hasattr(fact_sheet, 'json') else json.dumps(fact_sheet, default=str)
     from app.core.schemas import CampaignDrafts
-    structured_model = model.with_structured_output(CampaignDrafts)
-    chain = prompt | structured_model
+    chain = prompt | model.with_structured_output(CampaignDrafts)
     
-    product_hint = (fact_sheet.get('core_product_features', [])[:1] or ["your offer"])[0] if isinstance(fact_sheet, dict) else (fact_sheet.core_product_features[:1] or ["your offer"])[0]
-    is_revision = bool(state.get("correction_notes"))
-    
-    if is_revision:
-        await _push_log(campaign_id, "copywriter", "Fixing issues and rewriting now...")
-    else:
-        await _push_log(campaign_id, "copywriter", f"Thanks. Drafting the Blog, Social thread, and Email copy for {product_hint} now...")
-
-    state_msg = "Generating campaign drafts..."
-    typewriter_task = asyncio.create_task(_push_typewriter_effect(campaign_id, "copywriter", state_msg))
+    display_msg = f"Regenerating {target_platform if target_platform != 'social' else 'Social Hub'}..." if target_platform else "Drafting campaign copy..."
+    await _push_log(campaign_id, "copywriter", display_msg)
+    typewriter_task = asyncio.create_task(_push_typewriter_effect(campaign_id, "copywriter", "Polishing draft..."))
     
     try:
-        drafts_obj = await chain.ainvoke({
-            "voice_directives": voice_directives,
-            "facts_json": facts_json,
-            "feedback_context": feedback_context
-        })
+        new_obj = await chain.ainvoke({"facts_json": facts_json, "notes": notes})
         await typewriter_task
-        
-        # PUSH REAL-TIME MILESTONE
-        await _push_log(campaign_id, "copywriter", "Drafts are ready. Sending over to the Editor for review.")
+        new_drafts = new_obj.model_dump()
+        final_drafts = state.get("drafts", {}).copy()
 
-        # response is already a CampaignDrafts Pydantic object
-        drafts = drafts_obj.model_dump()
-        if is_revision:
-            msg = "Revision cycle complete. I've addressed the Editor's feedback and polished the transitions. Sending back for final Quality Control."
+        if target_platform:
+            await _push_log(campaign_id, "copywriter", f"Surgical patch for {target_platform} complete.")
+            # Map platform keywords to schema fields
+            if target_platform == 'blog':
+                final_drafts['blog'] = new_drafts.get('blog')
+                final_drafts['blog_title'] = new_drafts.get('blog_title')
+            elif target_platform == 'email':
+                final_drafts['email'] = new_drafts.get('email')
+            elif 'instagram' in target_platform:
+                final_drafts['instagram_post'] = new_drafts.get('instagram_post')
+            elif 'linkedin' in target_platform or 'x' in target_platform:
+                final_drafts['linkedin_thread'] = new_drafts.get('linkedin_thread')
+            else:
+                # Generic fallback for any other mapping
+                final_drafts[target_platform] = new_drafts.get(target_platform)
         else:
-            msg = "Multi-platform drafts are ready. We've optimized for Blog, Email, and Social streams. Handing off to the Editor-in-Chief for a final fact-check."
-        status = "completed"
+            final_drafts = new_drafts
 
+        return {"drafts": final_drafts, "logs": [AgentLogEntry(agent_id="copywriter", agent_name="Copywriter", message="Drafting complete.", status="completed")]}
     except Exception as e:
         typewriter_task.cancel()
-        import traceback
-        print(f"!!! COPYWRITER NODE FAILED: {str(e)}")
-        traceback.print_exc()
-        drafts = {}
-        msg = f"Drafting failed: {str(e)}"
-        status = "error"
-
-    return {
-        "drafts": drafts,
-        "logs": [
-            AgentLogEntry(agent_id="copywriter", agent_name="Copywriter", message=msg, status="completed")
-        ]
-    }
+        msg = "Gemini API key exhausted, try again later." if _is_api_exhausted(e) else f"Drafting failed: {str(e)}"
+        return {"logs": [AgentLogEntry(agent_id="copywriter", agent_name="Copywriter", message=msg, status="error")]}
 
 
 async def editor_node(state: CampaignState) -> dict:
-    """
-    Editor-in-Chief Node: Uses model.astream() for real-time token streaming.
-    """
     campaign_id = state["campaign_id"]
-    loop_num = state.get("loop_count", 0) + 1
     model = get_gemini_model(temperature=0.0)
-    
     prompt = ChatPromptTemplate.from_messages([
-        ("system", EDITOR_SYSTEM_PROMPT),
-        ("human", "FACT-SHEET:\n{facts_json}\n\nDRAFTS TO AUDIT:\n{drafts_json}")
+        ("system", EDITOR_SYSTEM_PROMPT), ("human", "FACTS:\n{facts_json}\n\nDRAFTS:\n{drafts_json}")
     ])
-
-    fact_sheet = state["fact_sheet"]
-    if hasattr(fact_sheet, 'json'):
-        facts_json = fact_sheet.json()
-    else:
-        facts_json = json.dumps(fact_sheet, default=str)
-
-    chain = prompt | model
+    facts_json = state["fact_sheet"].json() if hasattr(state["fact_sheet"], 'json') else json.dumps(state["fact_sheet"], default=str)
     
-    # Context-aware thinking message
-    await _push_log(campaign_id, "editor", "Reviewing content against brand safety and strict guidelines...")
-    
-    state_msg = "Auditing accuracy and tone..."
-    typewriter_task = asyncio.create_task(_push_typewriter_effect(campaign_id, "editor", state_msg))
-
     try:
-        response = await chain.ainvoke({
-            "facts_json": facts_json,
-            "drafts_json": json.dumps(state["drafts"])
-        })
-        await typewriter_task
-        full_content = extract_text(response.content) if hasattr(response, "content") else str(response)
-        
-        # PUSH REAL-TIME MILESTONE (Intermediate)
-        # await _push_log(campaign_id, "editor", "Audit complete. Assessing technical compliance...")
-
-        content = full_content.upper()
+        await _push_log(campaign_id, "editor", "Quality Control check...")
+        response = await (prompt | model).ainvoke({"facts_json": facts_json, "drafts_json": json.dumps(state["drafts"])})
+        content = extract_text(response.content).upper()
         is_approved = "PASSED" in content
-        notes = full_content if not is_approved else None
-        
-        if is_approved:
-            msg = "Quality Check PASSED. Content satisfies all technical constraints and maintains brand voice. The assembly line is now complete."
-            status = "completed"
-        else:
-            msg = f"Rejecting drafts. Issues found: REJECT\n\n{notes}"
-            status = "completed"
-                                             
-
+        msg = "Quality Check PASSED." if is_approved else f"Rejected: {content[:50]}..."
+        return {"is_approved": is_approved, "correction_notes": content if not is_approved else None, "loop_count": state.get("loop_count", 0) + 1, "logs": [AgentLogEntry(agent_id="editor", agent_name="Editor", message=msg, status="completed")]}
     except Exception as e:
-        typewriter_task.cancel()
-        import traceback
-        print(f"!!! EDITOR NODE FAILED: {str(e)}")
-        traceback.print_exc()
-        is_approved = False
-        notes = f"Editor error: {str(e)}"
-        msg = f"Audit failed: {str(e)}"
-        status = "error"
-
-    return {
-        "is_approved": is_approved,
-        "correction_notes": notes,
-        "loop_count": loop_num,
-        "logs": [
-            AgentLogEntry(agent_id="editor", agent_name="Editor", message=msg, status="completed")
-        ]
-    }
+        msg = "Gemini API key exhausted, try again later." if _is_api_exhausted(e) else f"Audit failed: {str(e)}"
+        return {"is_approved": False, "logs": [AgentLogEntry(agent_id="editor", agent_name="Editor", message=msg, status="error")]}

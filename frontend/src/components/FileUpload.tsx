@@ -3,6 +3,9 @@
 import React, { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/src/utils/supabase/client";
+import { ENDPOINTS } from "../config/api";
+import { useDashboard } from "@/src/context/DashboardContext";
+import { useEffect } from "react";
 
 interface FileUploadProps {
   onUploadStart?: () => void;
@@ -18,6 +21,13 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+  const { setUploadTrigger } = useDashboard();
+
+  useEffect(() => {
+    setUploadTrigger(() => {
+      fileInputRef.current?.click();
+    });
+  }, [setUploadTrigger]);
 
   const handleFile = async (file: File) => {
     // 1. Validation
@@ -63,9 +73,24 @@ export const FileUpload: React.FC<FileUploadProps> = ({
       const formData = new FormData();
       formData.append("file_url", publicUrl);
       formData.append("filename", file.name);
+
+      // 3.5 Save to Supabase Campaigns History
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error: dbError } = await supabase
+        .from('campaigns')
+        .insert({
+          id: mockId,
+          name: file.name.split('.')[0], // Punchy name from file
+          status: 'processing',
+          user_id: user?.id
+        });
+
+      if (dbError) {
+        console.error("Failed to save campaign to history:", dbError);
+      }
       
       // 4. Submit to Backend
-      const response = await fetch(`http://localhost:8000/api/v1/campaign/upload?campaign_id=${mockId}`, {
+      const response = await fetch(ENDPOINTS.UPLOAD(mockId), {
         method: "POST",
         body: formData,
       });

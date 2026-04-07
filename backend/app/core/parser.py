@@ -1,5 +1,6 @@
 import pypdf
 import docx2txt
+import re
 from pathlib import Path
 from fastapi import UploadFile, HTTPException
 
@@ -22,7 +23,7 @@ class ContentParser:
                 # PDF Extraction logic
                 reader = pypdf.PdfReader(file.file)
                 for page in reader.pages:
-                    content += page.extract_text() + "\n"
+                    content += (page.extract_text() or "") + "\n"
             
             elif filename.endswith(".docx"):
                 # DOCX Extraction logic
@@ -36,21 +37,25 @@ class ContentParser:
             else:
                 raise HTTPException(status_code=400, detail="Unsupported file format.")
             
-            # Basic cleanup: remove excessive whitespace
-            return " ".join(content.split())
+            # Cleanup: collapse horizontal whitespace but preserve vertical paragraphs
+            content = re.sub(r'[ \t]+', ' ', content) 
+            content = re.sub(r'\n\s*\n', '\n\n', content) # normalize paragraph breaks
+            return content.strip()
 
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             raise HTTPException(status_code=500, detail=f"Failed to parse file: {str(e)}")
         finally:
-            # Important: Reset file pointer if we need to read it again elsewhere
-            await file.seek(0)
+            # Reset file pointer if possible
+            if hasattr(file, "seek"):
+                await file.seek(0)
 
     @staticmethod
     async def download_and_extract_text(file_url: str, filename: str) -> str:
         """
         Downloads a large document from a public URL (e.g., Supabase) into a 
         temporary file, then extracts its raw text to feed into LangChain.
-        This bypasses Vercel limits while relying on LangChain's stable schema parsing.
         """
         import tempfile
         import httpx
@@ -66,7 +71,7 @@ class ContentParser:
                 with open(temp_path, "wb") as f:
                     f.write(response.content)
 
-            # Use local FastAPI UploadFile wrapper to reuse our extraction logic
+            # Re-read locally for parsing
             with open(temp_path, "rb") as f:
                 class MockUploadFile:
                     def __init__(self, f_obj, name):
@@ -86,6 +91,5 @@ class ContentParser:
             return extracted_text
             
         finally:
-            # Clean up the local temp file to prevent disk bloat
             if temp_path.exists():
                 os.remove(temp_path)

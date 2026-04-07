@@ -3,6 +3,8 @@
 import React, { useState, use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/src/utils/supabase/client";
+import { API_BASE_URL, ENDPOINTS } from "@/src/config/api";
 
 export default function ReviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -24,22 +26,32 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
 
   React.useEffect(() => {
     if (!campaignId) return;
-    fetch(`http://localhost:8000/api/v1/campaign/${campaignId}/results`)
-      .then(res => {
-        if (!res.ok) throw new Error("Failed to load campaign results");
-        return res.json();
-      })
-      .then(data => {
-        setResults(data);
+
+    const supabase = createClient();
+    
+    async function loadResults() {
+      try {
+        const { data, error } = await supabase
+          .from('campaigns')
+          .select('*')
+          .eq('id', campaignId)
+          .single();
+
+        if (error) throw error;
+        if (!data) throw new Error("Campaign not found");
+
+        setResults({ ...data, ...data.results });
         if (data.approvals) {
           setApprovals(data.approvals);
         }
         setIsLoading(false);
-      })
-      .catch(err => {
-        setError(err.message);
+      } catch (err: any) {
+        setError(err.message || "Failed to load campaign results");
         setIsLoading(false);
-      });
+      }
+    }
+
+    loadResults();
   }, [campaignId]);
 
   const handleDownloadKit = () => {
@@ -70,7 +82,7 @@ ${results.drafts.email?.body || ''}
     if (!feedbackText.trim() || isRefining) return;
     setIsRefining(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/campaign/${campaignId}/refine`, {
+      const res = await fetch(ENDPOINTS.REFINE(campaignId), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ correction_notes: feedbackText })
@@ -84,9 +96,33 @@ ${results.drafts.email?.body || ''}
     }
   };
 
+  const handleRegenerate = async (platform?: string) => {
+    if (isRegenerating) return;
+    setIsRegenerating(true);
+    try {
+      const payload = {
+        correction_notes: platform 
+          ? `[ONLY::${platform}] I want a fresh perspective on this ${platform} draft specifically. Regenerate with a slightly different angle while staying strictly true to the facts.` 
+          : "I want a fresh perspective on these drafts. Regenerate with slightly different angles and structure while staying strictly true to the facts."
+      };
+      
+      const res = await fetch(ENDPOINTS.REFINE(campaignId), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error("Failed to queue regeneration");
+      router.push(`/campaign/${campaignId}/room`);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to regenerate. Ensure the backend is running.");
+      setIsRegenerating(false);
+    }
+  };
+
   const handleApprove = async (platform: string) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/campaign/${campaignId}/approve`, {
+      const response = await fetch(ENDPOINTS.APPROVE(campaignId), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ platform }),
@@ -110,7 +146,7 @@ ${results.drafts.email?.body || ''}
   };
 
   return (
-    <div className="min-h-full bg-zinc-50 font-outfit p-4 sm:p-10 text-zinc-900 overflow-x-hidden selection:bg-blue-100 transition-all duration-300">
+    <div className="min-h-screen bg-zinc-50 font-outfit p-4 sm:p-10 text-zinc-900 overflow-x-hidden selection:bg-blue-100 transition-all duration-300">
       <div className="max-w-[1700px] mx-auto space-y-12">
         
         {/* --- HEADER --- */}
@@ -260,7 +296,7 @@ ${results.drafts.email?.body || ''}
                  </div>
               </div>
 
-              <div className={`bg-zinc-900 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.3)] flex flex-col transition-all duration-700 relative overflow-hidden ${viewMode === 'mobile' ? 'aspect-[9/19.5] rounded-[3rem] border-[8px] border-zinc-900 mx-auto w-full max-w-[320px] ring-1 ring-white/10' : 'rounded-[2.5rem] border border-zinc-100 min-h-[650px]'}`}>
+              <div className={`bg-zinc-900 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.3)] flex flex-col transition-all duration-700 relative overflow-hidden ${viewMode === 'mobile' ? 'aspect-[9/19.5] rounded-[3rem] border-[8px] border-zinc-900 mx-auto w-full max-w-[320px] ring-1 ring-white/10' : 'rounded-[2.5rem] border border-zinc-100 h-[750px]'}`}>
                   
                   {/* Mobile Notch Mockup */}
                   {viewMode === 'mobile' && (
@@ -286,7 +322,7 @@ ${results.drafts.email?.body || ''}
                         )}
                         
                         <h2 className={`font-playfair font-bold text-zinc-900 leading-tight ${viewMode === 'mobile' ? 'text-2xl' : 'text-3xl'}`}>
-                           {results?.drafts?.blog?.split('\n')[0]?.replace('#', '') || "Campaign Strategy Blog"}
+                           {results?.drafts?.blog_title || "Campaign Strategy Blog"}
                         </h2>
                         
                         <div className="space-y-5 text-zinc-600 leading-relaxed font-outfit text-sm whitespace-pre-wrap selection:bg-blue-100">
@@ -295,7 +331,7 @@ ${results.drafts.email?.body || ''}
                      </div>
                   </div>
 
-                  <div className={`p-6 bg-zinc-50/80 backdrop-blur-md border-t border-zinc-100 flex gap-3 mt-auto shrink-0 z-10`}>
+                  <div className={`p-6 bg-zinc-50/80 backdrop-blur-md border-t border-zinc-100 flex gap-3 mt-auto shrink-0 z-10 p-10 pb-20`}>
                      {approvals.blog ? (
                         <button 
                            onClick={() => handleApprove('blog')}
@@ -313,10 +349,11 @@ ${results.drafts.email?.body || ''}
                         </button>
                      )}
                      <button 
-                        disabled={!!approvals.blog}
-                        className={`flex-1 py-3 text-[11px] font-bold border transition-all rounded-2xl ${approvals.blog ? 'bg-zinc-50 text-black border-zinc-100' : 'bg-white border-zinc-200 text-black hover:bg-zinc-50 active:scale-95'}`}>
-                        Regenerate
-                     </button>
+                        onClick={() => handleRegenerate('blog')}
+                        disabled={!!approvals.blog || isRegenerating}
+                        className={`flex-1 py-3 text-[11px] font-bold border transition-all rounded-2xl ${approvals.blog || isRegenerating ? 'bg-zinc-50 text-black border-zinc-100' : 'bg-white border-zinc-200 text-black hover:bg-zinc-50 active:scale-95'}`}>
+                        {isRegenerating ? "Queuing..." : "Regenerate"}
+                      </button>
                   </div>
 
                   {/* Mobile Home Indicator Mockup */}
@@ -350,7 +387,7 @@ ${results.drafts.email?.body || ''}
                  </div>
               </div>
 
-              <div className={`bg-zinc-900 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.3)] flex flex-col transition-all duration-700 relative overflow-hidden ${viewMode === 'mobile' ? 'aspect-[9/19.5] rounded-[3rem] border-[8px] border-zinc-900 mx-auto w-full max-w-[320px] ring-1 ring-white/10' : 'rounded-[2.5rem] border border-zinc-100 min-h-[650px]'}`}>
+              <div className={`bg-zinc-900 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.3)] flex flex-col transition-all duration-700 relative overflow-hidden ${viewMode === 'mobile' ? 'aspect-[9/19.5] rounded-[3rem] border-[8px] border-zinc-900 mx-auto w-full max-w-[320px] ring-1 ring-white/10' : 'rounded-[2.5rem] border border-zinc-100 h-[750px]'}`}>
                   
                   {/* Mobile Notch Mockup */}
                   {viewMode === 'mobile' && (
@@ -409,7 +446,7 @@ ${results.drafts.email?.body || ''}
                      </div>
                   </div>
 
-                  <div className={`p-6 bg-zinc-50/80 backdrop-blur-md border-t border-zinc-100 flex gap-3 mt-auto shrink-0 z-10`}>
+                  <div className={`p-6 bg-zinc-50/80 backdrop-blur-md border-t border-zinc-100 flex gap-3 mt-auto shrink-0 z-10 p-10 pb-20`}>
                      {approvals.email ? (
                         <button 
                            onClick={() => handleApprove('email')}
@@ -427,10 +464,11 @@ ${results.drafts.email?.body || ''}
                         </button>
                      )}
                      <button 
-                        disabled={!!approvals.email}
-                        className={`flex-1 py-3 text-[11px] font-bold border transition-all rounded-2xl ${approvals.email ? 'bg-zinc-50 text-black border-zinc-100' : 'bg-white border-zinc-200 text-black hover:bg-zinc-50 active:scale-95'}`}>
-                        Regenerate
-                     </button>
+                        onClick={() => handleRegenerate('email')}
+                        disabled={!!approvals.email || isRegenerating}
+                        className={`flex-1 py-3 text-[11px] font-bold border transition-all rounded-2xl ${approvals.email || isRegenerating ? 'bg-zinc-50 text-black border-zinc-100' : 'bg-white border-zinc-200 text-black hover:bg-zinc-50 active:scale-95'}`}>
+                        {isRegenerating ? "Queuing..." : "Regenerate"}
+                      </button>
                   </div>
 
                   {/* Mobile Home Indicator Mockup */}
@@ -618,11 +656,12 @@ ${results.drafts.email?.body || ''}
                            Approve
                         </button>
                      )}
-                     <button 
-                        disabled={!!approvals[`social_${socialPlatform}`]}
-                        className={`flex-1 py-3 text-[11px] font-bold border transition-all rounded-2xl ${approvals[`social_${socialPlatform}`] ? 'bg-zinc-50 text-black border-zinc-100' : 'bg-white border-zinc-200 text-black hover:bg-zinc-50 active:scale-95'}`}>
-                        Regenerate
-                     </button>
+                      <button 
+                        onClick={() => handleRegenerate(socialPlatform)}
+                        disabled={!!approvals[`social_${socialPlatform}`] || isRegenerating}
+                        className={`flex-1 py-3 text-[11px] font-bold border transition-all rounded-2xl ${approvals[`social_${socialPlatform}`] || isRegenerating ? 'bg-zinc-50 text-black border-zinc-100' : 'bg-white border-zinc-200 text-black hover:bg-zinc-50 active:scale-95'}`}>
+                        {isRegenerating ? "Queuing..." : "Regenerate"}
+                      </button>
                   </div>
 
                  {/* Mobile Home Indicator Mockup */}

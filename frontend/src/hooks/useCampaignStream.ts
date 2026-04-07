@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { ENDPOINTS } from "../config/api";
 
 export interface AgentLog {
   agent_id: string;
@@ -35,7 +36,7 @@ export function useCampaignStream(campaignId: string) {
   useEffect(() => {
     if (!campaignId) return;
 
-    const url = `http://localhost:8000/api/v1/campaign/${campaignId}/stream`;
+    const url = ENDPOINTS.STREAM(campaignId);
     const eventSource = new EventSource(url);
 
     eventSource.onmessage = (event) => {

@@ -10,7 +10,11 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: str
     ENVIRONMENT: str = "development"
     
-    # Internal Storage Settings
+    # Supabase Cloud Persistence
+    SUPABASE_URL: str
+    SUPABASE_SERVICE_ROLE_KEY: str
+
+    # Internal Storage Settings (Deprecated but keeping for legacy compatibility)
     STORAGE_PATH: str = "app_data/uploads"
     
     # SSE / Real-time Configuration

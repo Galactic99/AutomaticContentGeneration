@@ -24,27 +24,28 @@ def _agent_display(node_name: str) -> str:
 async def event_generator(campaign_id: str):
     """
     Runs the LangGraph assembly line in a background task and yields SSE events
-    by reading from two sources:
+    reading from:
       1. The shared async queue (typing chunks pushed by node functions)
       2. Node start/end events from astream_events (for thinking/completed states)
     """
     
-    # 1. Load campaign data
+    # 1. Load campaign data from Supabase
     campaign = CampaignStorage.get_campaign(campaign_id)
     if not campaign:
         yield f"data: {json.dumps({'error': 'Campaign context not found. Please re-upload.'})}\n\n"
         return
 
     source_text = campaign["source_text"]
+    results_blob = campaign.get("results") or {}
 
     # 2. Initialize the graph & state
     assembly_line = create_assembly_line_graph()
     initial_state = {
         "campaign_id": campaign_id,
         "source_text": source_text,
-        "fact_sheet": campaign.get("fact_sheet"),
-        "drafts": campaign.get("drafts", {}),
-        "correction_notes": campaign.get("correction_notes"),
+        "fact_sheet": results_blob.get("fact_sheet"),
+        "drafts": results_blob.get("drafts", {}),
+        "correction_notes": results_blob.get("correction_notes"),
         "is_approved": False,
         "logs": []
     }
@@ -67,10 +68,6 @@ async def event_generator(campaign_id: str):
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
 
-    # 4. Get the shared queue for this campaign
-    q = get_queue(campaign_id)
-
-    # 5. Run the graph in a background task
     # 5. Run the graph in a background task
     final_full_state = {}
     graph_error = None
@@ -78,10 +75,7 @@ async def event_generator(campaign_id: str):
     async def run_graph():
         nonlocal final_full_state, graph_error
         try:
-            # We use ainvoke for the final state as it's the most reliable source of truth
-            # but keep astream_events for the real-time logs/typing
-            processed_nodes = set()
-            
+            # astream_events for the real-time logs/typing
             async for event in assembly_line.astream_events(
                 initial_state, version="v2",
                 config={"configurable": {"thread_id": campaign_id}}
@@ -95,23 +89,13 @@ async def event_generator(campaign_id: str):
 
                 if kind == "on_node_start":
                     display_name = _agent_display(node_name)
-                    # Use "Thinking" status but we don't need a static message here 
-                    # as the nodes now push their own conversational "Waking up" messages
+                    # Push 'thinking' status
                     await q.put({
                         "agent_id": node_name,
                         "agent_name": display_name,
                         "status": "thinking",
                         "timestamp": datetime.now(timezone.utc).isoformat()
                     })
-                    
-                    if node_name == "copywriter":
-                         await q.put({
-                            "agent_id": "system",
-                            "agent_name": "System",
-                            "message": "Copywriter is running on Gemini 1.5 Pro.",
-                            "status": "completed",
-                            "timestamp": datetime.now(timezone.utc).isoformat()
-                        })
 
                 elif kind == "on_node_end":
                     output = event.get("data", {}).get("output")
@@ -142,9 +126,6 @@ async def event_generator(campaign_id: str):
             await q.put({"__done__": True})
         except Exception as e:
             graph_error = str(e)
-            import traceback
-            print(f"!!! CRITICAL GRAPH ERROR: {graph_error}")
-            traceback.print_exc()
             await q.put({"__error__": graph_error})
 
     # Start the graph
@@ -175,22 +156,19 @@ async def event_generator(campaign_id: str):
             graph_task.cancel()
         cleanup_queue(campaign_id)
 
-    # 7. Final Verification & Persistence
+    # 7. Final Persistence to Supabase
     if terminal_error_received:
-        CampaignStorage._data[campaign_id]["status"] = "error"
-        CampaignStorage._save()
-        return # already yielded error in the loop
+        CampaignStorage.save_error(campaign_id, terminal_error_received)
+        return 
 
-    # Definitively retrieve the final state from the Memory Bank (Checkpointer)
+    # Retrieve final state from memory bank after run_graph finishes
     config = {"configurable": {"thread_id": campaign_id}}
     state_snapshot = assembly_line.get_state(config)
-    final_full_state = state_snapshot.values if state_snapshot else {}
+    final_full_state = state_snapshot.values if state_snapshot else final_full_state
     
-    # Use the tracking state built from node outputs
     has_error = False
     error_message = "Pipeline verification failed: The analysis was incomplete."
     
-    # Check for error logs in the final state logs
     if "logs" in final_full_state:
         for log in final_full_state["logs"]:
             status = getattr(log, "status", "") if not isinstance(log, dict) else log.get("status", "")
@@ -208,22 +186,23 @@ async def event_generator(campaign_id: str):
         await asyncio.sleep(0.5)
         yield f"data: {json.dumps({'status': 'completed', 'next_step': 'review'})}\n\n"
     else:
-        CampaignStorage._data[campaign_id]["status"] = "error"
-        CampaignStorage._save()
+        CampaignStorage.save_error(campaign_id, error_message)
         await asyncio.sleep(0.5)
         yield f"data: {json.dumps({'error': error_message})}\n\n"
 
 
 @router.get("/{campaign_id}/results")
 async def get_campaign_results(campaign_id: str):
-    """Returns the final Fact-Sheet and AI drafts."""
+    """Fallback: Frontend now fetches directly from Supabase via RLS."""
     campaign = CampaignStorage.get_campaign(campaign_id)
     if not campaign or campaign.get("status") != "completed":
         raise HTTPException(status_code=404, detail="Campaign results not ready.")
     
+    # Re-structure for legacy frontend compatibility if needed
+    results = campaign.get("results") or {}
     return {
-        "fact_sheet": campaign["fact_sheet"],
-        "drafts": campaign["drafts"],
+        "fact_sheet": results.get("fact_sheet"),
+        "drafts": results.get("drafts"),
         "approvals": campaign.get("approvals", {}),
         "source_text": campaign.get("source_text", ""),
         "campaign_id": campaign_id
@@ -251,27 +230,27 @@ class RefineRequest(BaseModel):
 
 @router.post("/{campaign_id}/refine")
 async def refine_campaign(campaign_id: str, request: RefineRequest):
-    """Triggers a manual refinement loop."""
+    """Triggers a Cloud-Synchronized manual refinement loop."""
     campaign = CampaignStorage.get_campaign(campaign_id)
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
     
-    CampaignStorage._load()
-    if campaign_id in CampaignStorage._data:
-        CampaignStorage._data[campaign_id]["status"] = "processing"
-        CampaignStorage._data[campaign_id]["correction_notes"] = request.correction_notes
-        CampaignStorage._save()
+    # Cloud-Sync status reset
+    CampaignStorage.save_campaign(
+        campaign_id, 
+        correction_notes=request.correction_notes
+    )
     
     return {"status": "success", "message": "Campaign queued for manual refinement."}
 
 
 class ApproveRequest(BaseModel):
-    platform: str # 'blog', 'email', 'social_x', 'social_linkedin', 'social_instagram'
+    platform: str 
 
 
 @router.patch("/{campaign_id}/approve")
 async def approve_campaign_draft(campaign_id: str, request: ApproveRequest):
-    """Toggles approval status for a specific platform draft."""
+    """Toggles approval status in Supabase (Cloud Proxy)."""
     exists, is_approved = CampaignStorage.toggle_approval(campaign_id, request.platform)
     if not exists:
         raise HTTPException(status_code=404, detail="Campaign not found")

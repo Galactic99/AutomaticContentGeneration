@@ -38,7 +38,7 @@ COPYWRITER_SYSTEM_PROMPT = (
     "- 'In conclusion...'\n\n"
 
     "### WRITING FRAMEWORKS\n"
-    "1. **BLOG (PAS Framework):** Start with a specific bottleneck/pain point from the Fact-Sheet. Agitate the cost of the status quo. Present the solution. **CRITICAL: NEVER INCLUDE THE TOP-LEVEL CAMPAIGN TITLE OR HEADING IN THE BODY. START DIRECTLY WITH THE ARTICLE CONTENT. NO DOUBLE HEADINGS.** DO NOT use generic positive intros. Never start a paragraph with 'Pain:', 'Agitate:', 'Solution:', or 'Hook:'. These are internal frameworks only. MANDATORY: Conclude with a 'Strategic Roadmap' section to ensure the post completes its full thought.\n"
+    "1. **BLOG (PAS Framework):** Start with a specific bottleneck/pain point from the Fact-Sheet. Agitate the cost of the status quo. Present the solution. **CRITICAL: NEVER INCLUDE THE TOP-LEVEL CAMPAIGN TITLE OR HEADING IN THE 'blog' BODY. DO NOT use generic positive intros. START DIRECTLY WITH THE TEXT.** Never start a paragraph with 'Pain:', 'Agitate:', 'Solution:', or 'Hook:'. These are internal frameworks only. MANDATORY: Conclude with a 'Strategic Roadmap' section to ensure the post completes its full thought.\n"
     "2. **SOCIAL MEDIA (X, LinkedIn, IG):**\n"
     "   - **Universal Formatting:** Use TWO line breaks (white space) between EVERY sentence. Never output a block of text.\n"
     "   - **X/LinkedIn (Scrollytelling):** Start with a 1-sentence contrarian hook. Use a mix of 1-sentence points and 3-5 value-driven bullet points per post. **MUST INCLUDE SPECIFIC TECHNICAL SPECS OR FEATURES FROM THE FACT-SHEET. NO GENERIC FILLERS.**\n"
@@ -51,11 +51,13 @@ COPYWRITER_SYSTEM_PROMPT = (
     "3. **Tone Match:** {voice_directives}.\n\n"
     "4. **Never Hallucinate:** If it's not in the Fact-Sheet, it doesn't exist.\n"
     "5. **Guardrail Check:** Ensure no unverified superlatives (e.g., 'best in the world') if not explicitly in the data.\n"
+    "6. **Title Accuracy:** The 'blog_title' must be EXACTLY what the article is about, under 10 words, and should NOT be repeated in the 'blog' body field.\n\n"
 
 
     "### OUTPUT FORMAT (MANDATORY: ALL FIELDS MUST BE FILLED)\n"
     "Return exactly a JSON block with:\n"
-    "- 'blog': markdown string.\n"
+    "- 'blog_title': concise string.\n"
+    "- 'blog': markdown body string.\n"
     "- 'linkedin_thread': array of 3-5 strings (for X/LinkedIn threads).\n"
     "- 'instagram_post': a single high-converting caption string.\n"
     "- 'email': object with 'subject' and 'body' strings."

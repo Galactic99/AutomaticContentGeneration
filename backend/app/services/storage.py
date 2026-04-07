@@ -2,101 +2,129 @@ import json
 import os
 from typing import Dict, Optional
 from pathlib import Path
+from supabase import create_client, Client
+from ..config import get_settings
 
-STORAGE_FILE = Path("campaign_data.json")
+settings = get_settings()
 
 class CampaignStorage:
     """
-    Persistent, file-based store for campaign data during development.
-    Prevents 404 errors when FastAPI reloads (wiping in-memory dicts).
+    Cloud-based Supabase persistence for campaign results.
+    Replaces ephemeral JSON files with a production-grade database.
+    Ensures that agent drafts (Blogs, Emails, Social Threads) persist permanently.
     """
     
-    _data: Dict[str, Dict] = {}
+    _client: Optional[Client] = None
 
     @classmethod
-    def _load(cls):
-        if STORAGE_FILE.exists():
-            try:
-                with open(STORAGE_FILE, "r") as f:
-                    cls._data = json.load(f)
-            except:
-                cls._data = {}
+    def get_client(cls) -> Client:
+        if cls._client is None:
+            cls._client = create_client(
+                settings.SUPABASE_URL,
+                settings.SUPABASE_SERVICE_ROLE_KEY
+            )
+        return cls._client
 
     @classmethod
-    def _save(cls):
-        with open(STORAGE_FILE, "w") as f:
-            json.dump(cls._data, f, indent=2, default=str)
-
-    @classmethod
-    def save_campaign(cls, campaign_id: str, source_text: str):
-        cls._load()
-        cls._data[campaign_id] = {
-            "source_text": source_text,
+    def save_campaign(cls, campaign_id: str, source_text: Optional[str] = None, correction_notes: Optional[str] = None):
+        """
+        Registers or updates a campaign. Handles the 'Refine' loop by resetting 
+        the status and recording correction notes.
+        """
+        client = cls.get_client()
+        update_payload = {
+            "id": campaign_id,
             "status": "processing",
-            "fact_sheet": None,
-            "drafts": {}
         }
-        cls._save()
+        if source_text:
+            update_payload["source_text"] = source_text
+        if correction_notes:
+            # We also get the current results and add the notes to them
+            current = cls.get_campaign(campaign_id)
+            results = current.get("results") or {}
+            results["correction_notes"] = correction_notes
+            update_payload["results"] = results
+
+        client.table("campaigns").upsert(update_payload).execute()
 
     @classmethod
     def save_results(cls, campaign_id: str, fact_sheet: any, drafts: dict):
-        cls._load()
-        if campaign_id in cls._data:
-            # Handle Pydantic model conversion to serializable dict
-            if hasattr(fact_sheet, "model_dump"):
-                fact_sheet_dict = fact_sheet.model_dump()
-            elif hasattr(fact_sheet, "dict"):
-                fact_sheet_dict = fact_sheet.dict()
-            else:
-                fact_sheet_dict = fact_sheet
+        """
+        Performs a final update to the campaign record with the agent results.
+        Encapsulates the fact-sheet and drafts into a 'results' JSONB column.
+        """
+        client = cls.get_client()
 
-            cls._data[campaign_id]["fact_sheet"] = fact_sheet_dict
-            cls._data[campaign_id]["drafts"] = drafts
-            cls._data[campaign_id]["status"] = "completed"
-            
-            # Initialize approvals dictionary if not exists
-            if "approvals" not in cls._data[campaign_id]:
-                cls._data[campaign_id]["approvals"] = {}
-                
-            cls._save()
+        # Convert Pydantic model to JSON-native types (e.g. datetimes to strings)
+        if hasattr(fact_sheet, "model_dump"):
+            fact_sheet_dict = fact_sheet.model_dump(mode="json")
+        elif hasattr(fact_sheet, "dict"):
+            fact_sheet_dict = fact_sheet.dict()
+        else:
+            fact_sheet_dict = fact_sheet
+
+        current = cls.get_campaign(campaign_id)
+        results_payload = current.get("results") or {}
+        results_payload["fact_sheet"] = fact_sheet_dict
+        results_payload["drafts"] = drafts
+
+        update_payload = {
+            "status": "completed",
+            "results": results_payload
+        }
+
+        # If a blog title was generated, use it as the new campaign name for the history sidebar
+        if isinstance(drafts, dict) and drafts.get("blog_title"):
+            update_payload["name"] = drafts["blog_title"]
+
+        client.table("campaigns").update(update_payload).eq("id", campaign_id).execute()
 
     @classmethod
     def save_error(cls, campaign_id: str, error_msg: str):
-        cls._load()
-        if campaign_id in cls._data:
-            cls._data[campaign_id]["status"] = "failed"
-            cls._data[campaign_id]["error"] = error_msg
-            cls._save()
+        """Records a failure in the assembly line to Supabase."""
+        client = cls.get_client()
+        client.table("campaigns").update({
+            "status": "failed",
+            "error": error_msg
+        }).eq("id", campaign_id).execute()
 
     @classmethod
     def get_campaign(cls, campaign_id: str) -> Optional[Dict]:
-        cls._load()
-        return cls._data.get(campaign_id)
+        """
+        Fetches a campaign from Supabase.
+        Backend uses service-role so it can retrieve any ID.
+        """
+        client = cls.get_client()
+        response = client.table("campaigns").select("*").eq("id", campaign_id).limit(1).execute()
+        return response.data[0] if response.data else None
 
     @classmethod
     def toggle_approval(cls, campaign_id: str, platform: str):
-        cls._load()
-        if campaign_id in cls._data:
-            if "approvals" not in cls._data[campaign_id]:
-                cls._data[campaign_id]["approvals"] = {}
+        """
+        Toggles approval status for a specific platform draft in the completions.
+        """
+        client = cls.get_client()
+        campaign = cls.get_campaign(campaign_id)
+        if not campaign:
+            return False, False
             
-            if platform in cls._data[campaign_id]["approvals"]:
-                # If already approved, unverify it
-                del cls._data[campaign_id]["approvals"][platform]
-                is_approved = False
-            else:
-                # If not approved, verify it
-                from datetime import datetime, timezone
-                cls._data[campaign_id]["approvals"][platform] = datetime.now(timezone.utc).isoformat()
-                is_approved = True
+        approvals = campaign.get("approvals") or {}
+        if platform in approvals:
+            del approvals[platform]
+            is_approved = False
+        else:
+            from datetime import datetime, timezone
+            approvals[platform] = datetime.now(timezone.utc).isoformat()
+            is_approved = True
             
-            cls._save()
-            return True, is_approved
-        return False, False
+        client.table("campaigns").update({
+            "approvals": approvals
+        }).eq("id", campaign_id).execute()
+        
+        return True, is_approved
 
     @classmethod
     def delete_campaign(cls, campaign_id: str):
-        cls._load()
-        if campaign_id in cls._data:
-            del cls._data[campaign_id]
-        cls._save()
+        """Removes a campaign from the persistent cloud store."""
+        client = cls.get_client()
+        client.table("campaigns").delete().eq("id", campaign_id).execute()

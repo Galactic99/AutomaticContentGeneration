@@ -10,3 +10,5 @@ langchain-google-genai
 langgraph
 pypdf
 docx2txt
+supabase
+httpx
