@@ -47,6 +47,7 @@ async def event_generator(campaign_id: str):
         "drafts": results_blob.get("drafts", {}),
         "correction_notes": results_blob.get("correction_notes"),
         "is_approved": False,
+        "loop_count": 0,
         "logs": []
     }
     
@@ -78,7 +79,7 @@ async def event_generator(campaign_id: str):
             # astream_events for the real-time logs/typing
             async for event in assembly_line.astream_events(
                 initial_state, version="v2",
-                config={"configurable": {"thread_id": campaign_id}}
+                config={"configurable": {"thread_id": campaign_id}, "recursion_limit": 100}
             ):
                 kind = event["event"]
                 meta = event.get("metadata", {})

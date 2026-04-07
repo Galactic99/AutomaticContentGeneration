@@ -14,11 +14,10 @@ def should_continue(state: CampaignState):
     Conditional logic to decide if the draft needs revision.
     Circuit Breaker: Limit to 3 rounds of debate to prevent infinite loops.
     """
-    if state["is_approved"]:
+    if state.get("is_approved"):
         return END
     
-    if state.get("loop_count", 0) >= 3:
-        # Stop at 3 iterations to avoid quota drain
+    if int(state.get("loop_count", 0)) >= 5:
         return END
         
     return "copywriter"
