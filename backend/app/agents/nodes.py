@@ -125,6 +125,14 @@ async def copywriter_node(state: CampaignState) -> dict:
     ])
 
     facts_json = fact_sheet.json() if hasattr(fact_sheet, 'json') else json.dumps(fact_sheet, default=str)
+    
+    # Extract tone / voice directives for the prompt variable
+    voice_directives = "Professional, data-driven and concise"
+    if hasattr(fact_sheet, "brand_voice_directives") and fact_sheet.brand_voice_directives:
+        voice_directives = ", ".join(fact_sheet.brand_voice_directives)
+    elif isinstance(fact_sheet, dict) and fact_sheet.get("brand_voice_directives"):
+        voice_directives = ", ".join(fact_sheet["brand_voice_directives"])
+
     from app.core.schemas import CampaignDrafts
     chain = prompt | model.with_structured_output(CampaignDrafts)
     
@@ -133,7 +141,11 @@ async def copywriter_node(state: CampaignState) -> dict:
     typewriter_task = asyncio.create_task(_push_typewriter_effect(campaign_id, "copywriter", "Polishing draft..."))
     
     try:
-        new_obj = await chain.ainvoke({"facts_json": facts_json, "notes": notes})
+        new_obj = await chain.ainvoke({
+            "facts_json": facts_json, 
+            "notes": notes,
+            "voice_directives": voice_directives
+        })
         await typewriter_task
         if not new_obj: raise ValueError("AI Model failed to generate drafts.")
         new_drafts = new_obj.model_dump()
