@@ -60,7 +60,7 @@ COPYWRITER_SYSTEM_PROMPT = (
     "- 'blog': markdown body string.\n"
     "- 'linkedin_thread': array of 3-5 strings (for X/LinkedIn threads).\n"
     "- 'instagram_post': a single high-converting caption string.\n"
-    "- 'email': {{ \"subject\": \"string\", \"body\": \"string\" }} (MANDATORY: BOTH FIELDS MUST BE PRESENT)."
+    "- 'email': JSON object containing mandatory 'subject' and 'body' keys."
 )
 
 # --- EDITOR-IN-CHIEF (NODE: editor_node) ---
