@@ -107,10 +107,10 @@ async def copywriter_node(state: CampaignState) -> dict:
     if not fact_sheet:
          return {"logs": [AgentLogEntry(agent_id="copywriter", agent_name="Copywriter", message="Fact-Sheet missing. Research aborted.", status="error")]}
     
-    notes = state.get("correction_notes", "")
+    notes = state.get("correction_notes") or ""
     
     target_platform = None
-    if "[ONLY::" in notes:
+    if notes and "[ONLY::" in notes:
         match = re.search(r'\[ONLY::(\w+)\]', notes)
         if match:
             target_platform = match.group(1).lower()
