@@ -219,7 +219,6 @@ async def stream_campaign_progress(campaign_id: str, request: Request):
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
-            "Access-Control-Allow-Origin": "*",
         }
     )
 
