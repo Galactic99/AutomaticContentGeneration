@@ -11,9 +11,10 @@ from app.services.stream_bus import get_queue
 
 def extract_text(content) -> str:
     """Safely extracts a string from LangChain message content."""
+    if not content: return ""
     if isinstance(content, str): return content
     if isinstance(content, list):
-        return "".join([part.get("text", "") if isinstance(part, dict) else str(part) for part in content])
+        return "".join([part.get("text", "") if (isinstance(part, dict) and part) else str(part) for part in content if part])
     return str(content)
 
 def _get_agent_display(node_name: str) -> str:
@@ -40,6 +41,7 @@ async def _push_typing(campaign_id: str, agent_id: str, chunk_text: str):
     })
 
 async def _push_typewriter_effect(campaign_id: str, agent_id: str, message: str):
+    if not message: return
     chunk_size = 2
     for i in range(0, len(message), chunk_size):
         chunk = message[i:i+chunk_size]
