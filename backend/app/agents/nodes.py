@@ -64,6 +64,18 @@ def _is_api_exhausted(e: Exception) -> bool:
     err_msg = str(e).lower()
     return "quota" in err_msg or "rate limit" in err_msg or "429" in err_msg or "exhausted" in err_msg
 
+async def _invoke_with_retry(chain, input_data, max_retries=3):
+    """Retries an AI call with exponential backoff if a rate limit occurs."""
+    for attempt in range(max_retries):
+        try:
+            return await chain.ainvoke(input_data)
+        except Exception as e:
+            if _is_api_exhausted(e) and attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 3 # 3s, 6s, 9s
+                await asyncio.sleep(wait_time)
+                continue
+            raise e
+
 
 async def research_node(state: CampaignState) -> dict:
     campaign_id = state["campaign_id"]
@@ -91,7 +103,7 @@ async def research_node(state: CampaignState) -> dict:
         if len(source_text) > 500000: source_text = source_text[:500000] + "\n[TRUNCATED]"
                 
         chain = prompt | structured_model
-        fact_sheet = await chain.ainvoke({"text": source_text})
+        fact_sheet = await _invoke_with_retry(chain, {"text": source_text})
         await typewriter_task
         
         if fact_sheet is None: raise ValueError("Model returned None.")
@@ -141,7 +153,7 @@ async def copywriter_node(state: CampaignState) -> dict:
     typewriter_task = asyncio.create_task(_push_typewriter_effect(campaign_id, "copywriter", "Polishing draft..."))
     
     try:
-        new_obj = await chain.ainvoke({
+        new_obj = await _invoke_with_retry(chain, {
             "facts_json": facts_json, 
             "notes": notes,
             "voice_directives": voice_directives
@@ -186,7 +198,7 @@ async def editor_node(state: CampaignState) -> dict:
     
     try:
         await _push_log(campaign_id, "editor", "Quality Control check...")
-        response = await (prompt | model).ainvoke({"facts_json": facts_json, "drafts_json": json.dumps(state["drafts"])})
+        response = await _invoke_with_retry((prompt | model), {"facts_json": facts_json, "drafts_json": json.dumps(state["drafts"])})
         content = extract_text(response.content).upper()
         is_approved = "PASSED" in content
         msg = "Quality Check PASSED." if is_approved else f"Rejected: {content[:50]}..."
